@@ -9,6 +9,7 @@ import json
 import io
 import time
 from datetime import date
+import base64
 
 st.set_page_config(
     page_title="AI分析 Pro",
@@ -103,16 +104,32 @@ with tab1:
         st.markdown("---")
         st.subheader("📝 抽出データの手動確認・修正")
         r_list = st.session_state["r_list"]
+        f_list = st.session_state["f_list"]
         
         for i, d in enumerate(r_list):
-            p_name = d.get("patient_name", "患者名なし")
-            c_name = d.get("clinic_name", "医院名なし")
+            p_name = d.get("patient_name", "患者名未入力")
+            c_name = d.get("clinic_name", "医院名未入力")
             
             with st.expander(f"🔽 データ #{i+1} : {p_name} 様 ({c_name})", expanded=False):
-                col1, col2 = st.columns(2)
-                with col1:
-                    d["clinic_name"] = st.text_input("医院名", d.get("clinic_name", ""), key=f"c_{i}")
-                    d["patient_name"] = st.text_input("患者名", p_name, key=f"p_{i}")
+                # 改善2: 画像のプレビュー表示
+                matching_file = next((f for f in f_list if f.name == d.get("_fn")), None)
+                col_img, col_form1, col_form2 = st.columns([2, 2, 2])
+                
+                with col_img:
+                    if matching_file:
+                        if "pdf" in matching_file.type:
+                            st.info("PDFファイル (プレビュー省略)")
+                        else:
+                            try:
+                                st.image(matching_file, use_column_width=True)
+                            except:
+                                st.warning("画像プレビュー不可")
+                    else:
+                        st.write("画像なし")
+
+                with col_form1:
+                    d["clinic_name"] = st.text_input("医院名 (必須)", d.get("clinic_name", ""), key=f"c_{i}")
+                    d["patient_name"] = st.text_input("患者名 (必須)", d.get("patient_name", ""), key=f"p_{i}")
                     d["slip_number"] = st.text_input("伝票番号", d.get("slip_number", ""), key=f"s_{i}")
                     
                     raw_date = d.get("completion_date", "")
@@ -123,7 +140,7 @@ with tab1:
                     c_date = st.date_input("完成日", value=def_date, key=f"dt_{i}")
                     d["completion_date"] = c_date.isoformat()
                     
-                with col2:
+                with col_form2:
                     r_def = d.get("restoration_type", "クラウン")
                     idx_t = TYPE_LIST.index(r_def) if r_def in TYPE_LIST else 0
                     d["restoration_type"] = st.selectbox("種別", TYPE_LIST, index=idx_t, key=f"rt_{i}")
@@ -141,54 +158,63 @@ with tab1:
                 d["comments"] = st.text_area("コメント", d.get("comments", ""), key=f"cm_{i}")
 
         if st.button("💾 AI解析データを全て保存", type="primary"):
-            if db:
-                s_cnt = 0
-                f_list = st.session_state["f_list"]
-                with st.spinner("データベースへ保存中..."):
-                    for i, d in enumerate(r_list):
-                        img_url = None
-                        if len(f_list) > 0:
-                            f_obj = f_list[0]
-                            f_b = f_obj.getvalue()
-                            f_t = f_obj.type
-                            pdf = "pdf" in f_t
-                            ext = "pdf" if pdf else "jpg"
-                            mime = "application/pdf" if pdf else "image/jpeg"
-                            ts = int(time.time())
-                            f_nm = f"{ts}_{i}.{ext}"
-                            try:
-                                db.storage.from_("sheet_images").upload(f_nm, f_b, {"content-type": mime})
-                                img_url = db.storage.from_("sheet_images").get_public_url(f_nm)
-                            except Exception:
-                                pass
+            # 改善3: 必須項目の入力チェック
+            has_error = False
+            for idx, d in enumerate(r_list):
+                if not d.get("clinic_name") or not d.get("patient_name"):
+                    st.error(f"⚠️ データ #{idx+1} の「医院名」または「患者名」が入力されていません。")
+                    has_error = True
+            
+            if not has_error:
+                if db:
+                    s_cnt = 0
+                    with st.spinner("データベースへ保存中..."):
+                        for i, d in enumerate(r_list):
+                            img_url = None
+                            if len(f_list) > 0:
+                                f_obj = f_list[0]
+                                f_b = f_obj.getvalue()
+                                f_t = f_obj.type
+                                pdf = "pdf" in f_t
+                                ext = "pdf" if pdf else "jpg"
+                                mime = "application/pdf" if pdf else "image/jpeg"
+                                ts = int(time.time())
+                                f_nm = f"{ts}_{i}.{ext}"
+                                try:
+                                    db.storage.from_("sheet_images").upload(f_nm, f_b, {"content-type": mime})
+                                    img_url = db.storage.from_("sheet_images").get_public_url(f_nm)
+                                except Exception:
+                                    pass
 
-                        db.table("evaluations").insert({
-                            "clinic_name": d.get("clinic_name"),
-                            "patient_name": d.get("patient_name"),
-                            "slip_number": d.get("slip_number"),
-                            "completion_date": d.get("completion_date"),
-                            "restoration_type": d.get("restoration_type"),
-                            "material": d.get("material"),
-                            "tooth_position": d.get("tooth_position"),
-                            "contact": d.get("contact"),
-                            "bite": d.get("bite"),
-                            "fit": d.get("fit"),
-                            "comments": d.get("comments"),
-                            "image_url": img_url
-                        }).execute()
-                        s_cnt += 1
-                        
-                del st.session_state["r_list"]
-                del st.session_state["f_list"]
-                st.success(f"{s_cnt}件のデータを保存しました！")
+                            db.table("evaluations").insert({
+                                "clinic_name": d.get("clinic_name"),
+                                "patient_name": d.get("patient_name"),
+                                "slip_number": d.get("slip_number"),
+                                "completion_date": d.get("completion_date"),
+                                "restoration_type": d.get("restoration_type"),
+                                "material": d.get("material"),
+                                "tooth_position": d.get("tooth_position"),
+                                "contact": d.get("contact"),
+                                "bite": d.get("bite"),
+                                "fit": d.get("fit"),
+                                "comments": d.get("comments"),
+                                "image_url": img_url
+                            }).execute()
+                            s_cnt += 1
+                            
+                    del st.session_state["r_list"]
+                    del st.session_state["f_list"]
+                    st.success(f"{s_cnt}件のデータを保存しました！")
+                    time.sleep(1)
+                    st.rerun()
 
 with tab2:
     st.subheader("✍️ 画像を使わずに手動で新規登録する")
     with st.form("manual_entry_form"):
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            m_clinic = st.text_input("医院名")
-            m_patient = st.text_input("患者名")
+            m_clinic = st.text_input("医院名 (必須)")
+            m_patient = st.text_input("患者名 (必須)")
             m_slip = st.text_input("伝票番号")
             m_date = st.date_input("完成日", value=date.today())
         with col_m2:
@@ -201,7 +227,9 @@ with tab2:
         m_com = st.text_area("コメント")
             
         if st.form_submit_button("手動で登録する", type="primary"):
-            if db:
+            if not m_clinic or not m_patient:
+                st.error("⚠️ 医院名と患者名は必須入力です。")
+            elif db:
                 try:
                     db.table("evaluations").insert({
                         "clinic_name": m_clinic,
@@ -253,14 +281,12 @@ with tab3:
 
             st.markdown("---")
             
-            # 【カスタムスコアカードの表示用関数】
             def render_metric(label, value):
                 if value == 0:
                     color = "#9e9e9e"
                     diff_str = "-"
                 else:
                     diff = value - 3.0
-                    # 誤差が 0.99 以内なら緑、1.0 以上なら赤
                     color = "#4CAF50" if abs(diff) <= 0.99 else "#F44336"
                     diff_str = f"{diff:+.2f}"
                 
@@ -292,13 +318,64 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
+            # 改善4: フィードバックレポート出力機能
+            if len(f_df) > 0:
+                html_content = f"""
+                <html>
+                <head><meta charset="utf-8"><title>補綴物 品質分析レポート</title></head>
+                <body style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #2196F3; border-bottom: 2px solid #2196F3; padding-bottom: 10px;">補綴物 品質分析レポート</h2>
+                    <p><strong>医院:</strong> {s_c} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>期間:</strong> {s_p} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>材料:</strong> {s_m}</p>
+                    <p><strong>出力日:</strong> {date.today().isoformat()}</p>
+                    <div style="background-color: #f5f5f5; padding: 15px; border-radius: 8px;">
+                        <h3>📊 総合評価 (適正値: 3.0)</h3>
+                        <ul style="font-size: 16px;">
+                            <li>対象件数: <strong>{len(f_df)} 件</strong></li>
+                            <li>コンタクト平均: <strong>{c_m:.2f}</strong></li>
+                            <li>バイト平均: <strong>{b_m:.2f}</strong></li>
+                            <li>適合平均: <strong>{f_m:.2f}</strong></li>
+                        </ul>
+                        <p style="font-size: 12px; color: #666;">※評価基準: 1(弱い/ゆるい) ～ 3(適正) ～ 5(強い/きつい)</p>
+                    </div>
+                </body>
+                </html>
+                """
+                b64 = base64.b64encode(html_content.encode('utf-8')).decode()
+                href = f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">📄 医院向けレポートを出力 (HTML形式)</a>'
+                st.markdown(href, unsafe_allow_html=True)
+                st.caption("※ダウンロードしたファイルを開き、ブラウザのメニューから「PDFとして保存」を選ぶと綺麗な資料になります。")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_chart1, col_chart2 = st.columns(2)
+            with col_chart1:
+                st.markdown("**📈 月別推移（品質トレンド）**")
+                if len(f_df) > 0:
+                    f_df['month'] = f_df['completion_date'].dt.to_period('M').astype(str)
+                    trend_df = f_df.groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
+                    fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5])
+                    fig_line.add_hline(y=3.0, line_dash="dash", line_color="#2196F3", annotation_text="適正値 (3.0)")
+                    st.plotly_chart(fig_line, use_container_width=True)
+                
+            with col_chart2:
+                # 改善1: 平均の罠を回避する「分布グラフ（ヒストグラム）」
+                st.markdown("**📊 スコア分布（歩留まりの確認）**")
+                if len(f_df) > 0:
+                    dist_data = []
+                    for col in ['contact', 'bite', 'fit']:
+                        counts = f_df[col].value_counts().reindex([1,2,3,4,5], fill_value=0)
+                        for score, count in counts.items():
+                            dist_data.append({'評価項目': col, 'スコア': str(score), '件数': count})
+                    dist_df = pd.DataFrame(dist_data)
+                    color_map = {'1': '#2196F3', '2': '#90CAF9', '3': '#4CAF50', '4': '#FFCC80', '5': '#FF9800'}
+                    fig_dist = px.bar(dist_df, x='評価項目', y='件数', color='スコア', color_discrete_map=color_map, barmode='stack')
+                    st.plotly_chart(fig_dist, use_container_width=True)
+
             if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary"):
                 with st.spinner("AIがデータを分析中..."):
                     c = genai.Client(api_key=KEY)
                     cols = ['completion_date', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                     dic = f_df[[co for co in cols if co in f_df.columns]].to_dict(orient='records')
                     
-                    # 歯科技工特有の評価基準をAIに教え込む
                     prm = (
                         f"条件（医院:{s_c}, 期間:{s_p}, 材料:{s_m}）の補綴物データの傾向を分析してください。\n"
                         "【重要な前提条件】\n"
@@ -309,26 +386,6 @@ with tab3:
                     )
                     r_ai = c.models.generate_content(model='gemini-3.5-flash', contents=prm)
                     st.info(r_ai.text)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            col_chart1, col_chart2 = st.columns(2)
-            with col_chart1:
-                st.markdown("**📊 全体平均 (適正値: 3.0)**")
-                # バーの色も、誤差0.99以内なら緑、それ以外は赤にする
-                bar_colors = ['#4CAF50' if abs(val - 3.0) <= 0.99 else '#F44336' for val in [c_m, b_m, f_m]]
-                fig_bar = px.bar(x=["コンタクト", "バイト", "適合"], y=[c_m, b_m, f_m], range_y=[1, 5])
-                fig_bar.update_traces(marker_color=bar_colors)
-                fig_bar.add_hline(y=3.0, line_dash="dash", line_color="#2196F3", annotation_text="適正値 (3.0)")
-                st.plotly_chart(fig_bar, use_container_width=True)
-                
-            with col_chart2:
-                st.markdown("**📈 月別推移（品質トレンド）**")
-                if len(f_df) > 0:
-                    f_df['month'] = f_df['completion_date'].dt.to_period('M').astype(str)
-                    trend_df = f_df.groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
-                    fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5])
-                    fig_line.add_hline(y=3.0, line_dash="dash", line_color="#2196F3", annotation_text="適正値 (3.0)")
-                    st.plotly_chart(fig_line, use_container_width=True)
 
 with tab4:
     st.subheader("📋 履歴管理（編集・削除）")
