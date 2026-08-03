@@ -112,4 +112,109 @@ with tab1:
                 t_pos = st.text_input("部位・歯番", p.get("tooth_position", ""))
             with col2:
                 contact = st.slider("コンタクト", 1, 5, int(p.get("contact", 3)))
-                bite = st.slider("バイト", 1
+                bite = st.slider("バイト", 1, 5, int(p.get("bite", 3)))
+                fit = st.slider("適合", 1, 5, int(p.get("fit", 3)))
+                comments = st.text_area("コメント", p.get("comments", ""))
+
+            submit = st.form_submit_button("保存", type="primary")
+            if submit and supabase:
+                img_url = None
+                if "f_bytes" in st.session_state:
+                    f_t = st.session_state.get("f_type", "")
+                    is_pdf = "pdf" in f_t
+                    ext = "pdf" if is_pdf else "jpg"
+                    mime = "application/pdf" if is_pdf else "image/jpeg"
+                    f_name = f"{int(time.time())}_{s_num}.{ext}"
+                    try:
+                        f_b = st.session_state["f_bytes"]
+                        supabase.storage.from_("sheet_images").upload(
+                            f_name, f_b, {"content-type": mime}
+                        )
+                        img_url = supabase.storage.from_("sheet_images").get_public_url(f_name)
+                    except Exception:
+                        pass
+
+                supabase.table("evaluations").insert({
+                    "clinic_name": c_name,
+                    "patient_name": p_name,
+                    "slip_number": s_num,
+                    "restoration_type": r_type,
+                    "tooth_position": t_pos,
+                    "contact": contact,
+                    "bite": bite,
+                    "fit": fit,
+                    "comments": comments,
+                    "image_url": img_url
+                }).execute()
+                
+                st.success("保存しました！")
+                del st.session_state["p_data"]
+                if "f_bytes" in st.session_state:
+                    del st.session_state["f_bytes"]
+
+with tab2:
+    st.subheader("📊 医院別の傾向")
+    if supabase:
+        res = supabase.table("evaluations").select("*").execute()
+        if res.data:
+            df = pd.DataFrame(res.data)
+            c_list = ["すべて"] + list(df["clinic_name"].unique())
+            s_clinic = st.selectbox("医院を選択", c_list)
+            
+            if s_clinic == "すべて":
+                f_df = df
+            else:
+                f_df = df[df["clinic_name"] == s_clinic]
+
+            count = len(f_df)
+            c_avg = f_df['contact'].mean()
+            b_avg = f_df['bite'].mean()
+            f_avg = f_df['fit'].mean()
+
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("総件数", f"{count}件")
+            col2.metric("コンタクト", f"{c_avg:.2f}")
+            col3.metric("バイト", f"{b_avg:.2f}")
+            col4.metric("適合", f"{f_avg:.2f}")
+
+            st.markdown("---")
+            if st.button("🤖 AI分析", type="primary") and GEMINI_API_KEY:
+                with st.spinner("分析中..."):
+                    client = genai.Client(api_key=GEMINI_API_KEY)
+                    cols = ['restoration_type', 'contact', 'bite', 'fit', 'comments']
+                    df_dict = f_df[cols].to_dict()
+                    prompt = f"医院({s_clinic})の傾向と対策。データ:{df_dict}"
+                    res_ai = client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=prompt
+                    )
+                    st.info(res_ai.text)
+
+            fig = px.bar(
+                x=["コンタクト", "バイト", "適合"],
+                y=[c_avg, b_avg, f_avg],
+                range_y=[1, 5]
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+with tab3:
+    st.subheader("📋 検索")
+    if supabase:
+        res = supabase.table("evaluations").select("*").order(
+            "created_at", desc=True
+        ).execute()
+        
+        if res.data:
+            df = pd.DataFrame(res.data)
+            
+            q = st.text_input("🔍 患者名・医院名で検索")
+            if q:
+                c1 = df['patient_name'].astype(str).str.contains(q, case=False, na=False)
+                c2 = df['slip_number'].astype(str).str.contains(q, case=False, na=False)
+                c3 = df['clinic_name'].astype(str).str.contains(q, case=False, na=False)
+                df = df[c1 | c2 | c3]
+
+            csv = df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 CSVダウンロード", csv, "data.csv", "text/csv")
+            
+            st.dataframe(df, use_container_width=True)
