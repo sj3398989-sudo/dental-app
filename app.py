@@ -32,7 +32,6 @@ with tab1:
         file_bytes = uploaded_file.read()
         file_type = uploaded_file.type
         
-        # プレビュー表示（画像の場合は画像、PDFの場合は案内）
         if "image" in file_type:
             try:
                 image = Image.open(io.BytesIO(file_bytes))
@@ -73,7 +72,6 @@ with tab1:
                     }
                     """
                     
-                    # Gemini APIへファイルを渡す形式の判定
                     if "pdf" in file_type:
                         content_part = {
                             "mime_type": "application/pdf",
@@ -86,4 +84,6 @@ with tab1:
                         model='gemini-2.5-flash',
                         contents=[content_part, prompt]
                     )
-                    raw_text = response.text.strip().replace("```json", "").replace("
+                    
+                    raw_text = response.text.strip()
+                    raw_text = raw_text.replace("```json", "").replace("
