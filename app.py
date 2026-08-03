@@ -80,8 +80,9 @@ with tab1:
                         i_io = io.BytesIO(f_byte)
                         cp = Image.open(i_io)
 
+                    # 確実にモデル名を gemini-2.0-flash に指定
                     res = c.models.generate_content(
-                        model='gemini-1.5-flash',
+                        model='gemini-2.0-flash',
                         contents=[cp, prm]
                     )
 
@@ -252,8 +253,9 @@ with tab2:
                     dic = f_df[cols].to_dict()
                     prm = f"({s_c})の傾向:{dic}"
                     
+                    # こちらも gemini-2.0-flash に変更
                     r_ai = c.models.generate_content(
-                        model='gemini-1.5-flash',
+                        model='gemini-2.0-flash',
                         contents=prm
                     )
                     st.info(r_ai.text)
