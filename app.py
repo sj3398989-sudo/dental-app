@@ -28,7 +28,6 @@ def get_db():
 db = get_db()
 st.title("🦷 補綴物評価 AI分析 Pro")
 
-# 改善3: タブを4つに分割し、目的別にスッキリ配置
 tab1, tab2, tab3, tab4 = st.tabs([
     "🤖 AI一括", 
     "✍️ 手動", 
@@ -98,7 +97,6 @@ with tab1:
                         
                 st.session_state["r_list"] = r_list
                 st.session_state["f_list"] = up_files
-                # 改善2: フワッと消えるトースト通知
                 st.toast(f"合計 {len(r_list)} 件のデータを検出しました！", icon="✨")
 
     if "r_list" in st.session_state:
@@ -110,7 +108,6 @@ with tab1:
             p_name = d.get("patient_name", "患者名なし")
             c_name = d.get("clinic_name", "医院名なし")
             
-            # 改善1: 折りたたみ式（Expander）にして縦幅を大幅に圧縮
             with st.expander(f"🔽 データ #{i+1} : {p_name} 様 ({c_name})", expanded=False):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -220,7 +217,6 @@ with tab2:
                         "comments": m_com,
                         "image_url": None
                     }).execute()
-                    # 改善2: トースト通知で画面をスッキリ
                     st.toast("手動登録が完了しました！", icon="✅")
                 except Exception as e:
                     st.error(f"登録エラー: {e}")
@@ -257,31 +253,72 @@ with tab3:
 
             st.markdown("---")
             
-            # 改善5: ダッシュボード感のある指標表示（基準値3.0からの差分を色付きで表示）
+            # 【カスタムスコアカードの表示用関数】
+            def render_metric(label, value):
+                if value == 0:
+                    color = "#9e9e9e"
+                    diff_str = "-"
+                else:
+                    diff = value - 3.0
+                    # 誤差が 0.99 以内なら緑、1.0 以上なら赤
+                    color = "#4CAF50" if abs(diff) <= 0.99 else "#F44336"
+                    diff_str = f"{diff:+.2f}"
+                
+                return f"""
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; background-color: #ffffff; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <p style="margin: 0; font-size: 14px; color: #666; font-weight: bold;">{label}</p>
+                    <h2 style="margin: 10px 0; color: {color}; font-size: 28px;">{value:.2f}</h2>
+                    <p style="margin: 0; font-size: 12px; color: {color};">基準値(3.0)からの誤差: {diff_str}</p>
+                </div>
+                """
+
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("📄 対象件数", f"{len(f_df)} 件")
+            with col1:
+                st.markdown(f"""
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; background-color: #ffffff; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <p style="margin: 0; font-size: 14px; color: #666; font-weight: bold;">📄 対象件数</p>
+                    <h2 style="margin: 10px 0; color: #333; font-size: 28px;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
+                    <p style="margin: 0; font-size: 12px; color: transparent;">-</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
             c_m = f_df['contact'].mean() if len(f_df) > 0 else 0
             b_m = f_df['bite'].mean() if len(f_df) > 0 else 0
             f_m = f_df['fit'].mean() if len(f_df) > 0 else 0
-            
-            col2.metric("コンタクト平均", f"{c_m:.2f}", f"{c_m - 3.0:.2f} (基準値3比)")
-            col3.metric("バイト平均", f"{b_m:.2f}", f"{b_m - 3.0:.2f} (基準値3比)")
-            col4.metric("適合平均", f"{f_m:.2f}", f"{f_m - 3.0:.2f} (基準値3比)")
 
-            if st.button("🤖 AI詳細分析（傾向と改善点）", type="primary"):
+            with col2: st.markdown(render_metric("コンタクト平均", c_m), unsafe_allow_html=True)
+            with col3: st.markdown(render_metric("バイト平均", b_m), unsafe_allow_html=True)
+            with col4: st.markdown(render_metric("適合平均", f_m), unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary"):
                 with st.spinner("AIがデータを分析中..."):
                     c = genai.Client(api_key=KEY)
                     cols = ['completion_date', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
-                    dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
-                    prm = f"条件（医院:{s_c}, 期間:{s_p}, 材料:{s_m}）の補綴物データの傾向を分析し、特に材料や設計による特徴・改善点を考察してください:\n{dic}"
+                    dic = f_df[[co for co in cols if co in f_df.columns]].to_dict(orient='records')
+                    
+                    # 歯科技工特有の評価基準をAIに教え込む
+                    prm = (
+                        f"条件（医院:{s_c}, 期間:{s_p}, 材料:{s_m}）の補綴物データの傾向を分析してください。\n"
+                        "【重要な前提条件】\n"
+                        "評価スコア（1〜5）は「高いほど良い」わけではありません。\n"
+                        "「3が適正（ピッタリ）」であり、1に近づくほど「弱い・ゆるい」、5に近づくほど「強い・きつい」を意味します。\n"
+                        "この前提を踏まえた上で、材料や設計による特徴・改善点を考察してください:\n"
+                        f"{dic}"
+                    )
                     r_ai = c.models.generate_content(model='gemini-3.5-flash', contents=prm)
                     st.info(r_ai.text)
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
             with col_chart1:
-                st.markdown("**📊 全体平均**")
-                fig_bar = px.bar(x=["コンタクト", "バイト", "適合"], y=[c_m, b_m, f_m], range_y=[1, 5], color_discrete_sequence=['#4CAF50'])
+                st.markdown("**📊 全体平均 (適正値: 3.0)**")
+                # バーの色も、誤差0.99以内なら緑、それ以外は赤にする
+                bar_colors = ['#4CAF50' if abs(val - 3.0) <= 0.99 else '#F44336' for val in [c_m, b_m, f_m]]
+                fig_bar = px.bar(x=["コンタクト", "バイト", "適合"], y=[c_m, b_m, f_m], range_y=[1, 5])
+                fig_bar.update_traces(marker_color=bar_colors)
+                fig_bar.add_hline(y=3.0, line_dash="dash", line_color="#2196F3", annotation_text="適正値 (3.0)")
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
             with col_chart2:
@@ -290,6 +327,7 @@ with tab3:
                     f_df['month'] = f_df['completion_date'].dt.to_period('M').astype(str)
                     trend_df = f_df.groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
                     fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5])
+                    fig_line.add_hline(y=3.0, line_dash="dash", line_color="#2196F3", annotation_text="適正値 (3.0)")
                     st.plotly_chart(fig_line, use_container_width=True)
 
 with tab4:
@@ -313,7 +351,6 @@ with tab4:
                 c2 = df['clinic_name'].astype(str).str.contains(q, na=False)
                 df = df[c1 | c2]
 
-            # 改善4: 表の表示項目をスリム化して見やすく
             display_cols = ['completion_date', 'clinic_name', 'patient_name', 'restoration_type', 'material', 'contact', 'bite', 'fit']
             available_cols = [c for c in display_cols if c in df.columns]
             st.dataframe(df[available_cols], use_container_width=True)
