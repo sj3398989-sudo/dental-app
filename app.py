@@ -31,7 +31,7 @@ st.title("🦷 補綴物評価 AI分析 Pro")
 tab1, tab2, tab3 = st.tabs([
     "📷 登録", 
     "📊 分析", 
-    "📋 履歴・削除"
+    "📋 履歴・編集・削除"
 ])
 
 with tab1:
@@ -49,7 +49,7 @@ with tab1:
                 
                 prm = (
                     "このファイルには1枚または複数の補綴物評価シートが含まれています。\n"
-                    "含まれているすべてのシートを個別に検出し、以下のキーを持つJSONオブジェクトの「配列（リスト: [...]）」形式で抽出してください。\n"
+                    "含まれているすべてのシートを個別に検出し、以下のキーを持つJSONオブジェクトの配列（リスト: [...]）形式で抽出してください。\n"
                     "各項目のキー:\n"
                     "- clinic_name (医院名)\n"
                     "- patient_name (患者名)\n"
@@ -239,7 +239,7 @@ with tab2:
                 clinics = ["すべて"] + list(df["clinic_name"].dropna().unique())
                 s_c = st.selectbox("医院で絞り込み", clinics)
             with col_f2:
-                periods = ["すべて", "直近1ヶ月", "直近3ヶ月", "直近6ヶ月"]
+                periods = ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"]
                 s_p = st.selectbox("期間で絞り込み（完成日基準）", periods)
             
             f_df = df.copy()
@@ -249,6 +249,8 @@ with tab2:
             today = pd.Timestamp.today()
             if s_p == "直近1ヶ月":
                 f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=1))]
+            elif s_p == "直近2ヶ月":
+                f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=2))]
             elif s_p == "直近3ヶ月":
                 f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=3))]
             elif s_p == "直近6ヶ月":
@@ -286,7 +288,7 @@ with tab2:
             st.plotly_chart(fig, use_container_width=True)
 
 with tab3:
-    st.subheader("📋 履歴・データ削除")
+    st.subheader("📋 履歴・編集・一括削除")
     if db:
         res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
         
@@ -305,25 +307,81 @@ with tab3:
             st.dataframe(df, use_container_width=True)
             
             st.markdown("---")
-            st.subheader("🗑️ データの削除")
-            
-            # 削除用の選択肢リストを作成（IDと概要を表示）
-            options = []
-            id_map = {}
+            st.subheader("📝 保存済みデータの編集")
+            edit_options = []
+            edit_map = {}
             for _, row in df.iterrows():
                 label = f"ID: {row['id']} | 医院: {row['clinic_name']} | 患者: {row['patient_name']} (完成日: {row['completion_date']})"
-                options.append(label)
-                id_map[label] = row['id']
+                edit_options.append(label)
+                edit_map[label] = row
                 
-            selected_label = st.selectbox("削除するデータを選択してください", options)
+            selected_edit_label = st.selectbox("編集するデータを選択", edit_options, key="edit_select")
+            if selected_edit_label:
+                target_row = edit_map[selected_edit_label]
+                with st.form("edit_form"):
+                    st.markdown(f"**ID: {target_row['id']} の編集**")
+                    e_clinic = st.text_input("医院名", value=str(target_row.get('clinic_name') or ""))
+                    e_patient = st.text_input("患者名", value=str(target_row.get('patient_name') or ""))
+                    e_slip = st.text_input("伝票番号", value=str(target_row.get('slip_number') or ""))
+                    
+                    e_date_val = date.today()
+                    try:
+                        if target_row.get('completion_date'):
+                            e_date_val = date.fromisoformat(str(target_row['completion_date'])[:10])
+                    except:
+                        pass
+                    e_date = st.date_input("完成日", value=e_date_val)
+                    
+                    t_list = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
+                    r_def = target_row.get('restoration_type', "クラウン")
+                    e_idx = t_list.index(r_def) if r_def in t_list else 0
+                    e_type = st.selectbox("種別", t_list, index=e_idx)
+                    
+                    e_pos = st.text_input("部位", value=str(target_row.get('tooth_position') or ""))
+                    
+                    e_con = st.slider("コンタクト", 1, 5, int(target_row.get('contact') or 3))
+                    e_bit = st.slider("バイト", 1, 5, int(target_row.get('bite') or 3))
+                    e_fit = st.slider("適合", 1, 5, int(target_row.get('fit') or 3))
+                    
+                    e_com = st.text_area("コメント", value=str(target_row.get('comments') or ""))
+                    
+                    if st.form_submit_button("変更を保存する"):
+                        try:
+                            db.table("evaluations").update({
+                                "clinic_name": e_clinic,
+                                "patient_name": e_patient,
+                                "slip_number": e_slip,
+                                "completion_date": e_date.isoformat(),
+                                "restoration_type": e_type,
+                                "tooth_position": e_pos,
+                                "contact": e_con,
+                                "bite": e_bit,
+                                "fit": e_fit,
+                                "comments": e_com
+                            }).eq("id", target_row['id']).execute()
+                            st.success("データを更新しました！画面を再読み込みしてください。")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"更新エラー: {e}")
+
+            st.markdown("---")
+            st.subheader("🗑️ データの一括削除")
+            st.markdown("削除したいデータにチェックを入れてください。")
             
-            if st.button("選択したデータを削除する", type="primary"):
-                target_id = id_map[selected_label]
-                try:
-                    db.table("evaluations").delete().eq("id", target_id).execute()
-                    st.success(f"ID: {target_id} のデータを削除しました。画面を再読み込みしてください。")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"削除エラー: {e}")
+            selected_ids = []
+            for _, row in df.iterrows():
+                chk_label = f"ID: {row['id']} | 医院: {row['clinic_name']} | 患者: {row['patient_name']} ({row['completion_date']})"
+                if st.checkbox(chk_label, key=f"del_{row['id']}"):
+                    selected_ids.append(row['id'])
+            
+            if selected_ids:
+                if st.button(f"選択した {len(selected_ids)} 件のデータを完全に削除する", type="primary"):
+                    try:
+                        for tid in selected_ids:
+                            db.table("evaluations").delete().eq("id", tid).execute()
+                        st.success(f"{len(selected_ids)} 件のデータを削除しました！")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"削除エラー: {e}")
         else:
             st.info("保存されたデータはまだありません。")
