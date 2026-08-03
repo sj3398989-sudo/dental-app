@@ -19,32 +19,29 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. スタイリッシュ化のためのカスタムCSS ---
+# --- 2. スマホ対応・スタイリッシュCSS ---
 st.markdown("""
 <style>
-    /* Streamlit標準のヘッダー・フッターを隠してアプリ感を出す */
+    /* Streamlit標準のメニューとフッターを隠す */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* アプリ全体の背景色をほんのり明るいグレーにして清潔感を */
-    .stApp {
-        background-color: #F8F9FA;
+    /* タイトルの装飾（スマホでも綺麗に収まる可変サイズ） */
+    .custom-title {
+        font-size: clamp(1.5rem, 6vw, 2.2rem);
+        font-weight: 800;
+        color: #3B82F6;
+        margin-bottom: 5px;
+        line-height: 1.3;
     }
     
-    /* タイトルの装飾 */
-    .custom-title {
-        font-size: 2.5rem;
-        font-weight: 800;
-        color: #1E3A8A;
-        margin-bottom: 5px;
-    }
     .title-underline {
         height: 4px;
         background: linear-gradient(90deg, #3B82F6, #14B8A6);
         border-radius: 2px;
-        width: 100px;
-        margin-bottom: 30px;
+        width: 80px;
+        margin-bottom: 25px;
     }
     
     /* プライマリボタン（主要アクション）のモダン化 */
@@ -63,35 +60,8 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* セカンダリボタンのモダン化 */
-    .stButton>button[kind="secondary"] {
-        border-radius: 8px;
-        border: 1px solid #CBD5E1;
-        background-color: white;
-        transition: all 0.2s ease;
-    }
-    .stButton>button[kind="secondary"]:hover {
-        border-color: #3B82F6;
-        color: #3B82F6;
-    }
-    
-    /* タブのデザイン調整 */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: transparent;
-        border-radius: 4px 4px 0px 0px;
-        gap: 1px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-    }
-    
     /* エクスパンダー（折りたたみ）をカード風に */
     .streamlit-expanderHeader {
-        background-color: white;
         border-radius: 8px;
         border: 1px solid #E2E8F0;
     }
@@ -115,11 +85,12 @@ def get_db():
 
 db = get_db()
 
+# スマホで見やすいようにタブの名前を少し短くしました
 tab1, tab2, tab3, tab4 = st.tabs([
-    "🤖 AI一括登録", 
-    "✍️ 手動登録", 
-    "📊 分析ダッシュボード", 
-    "📋 履歴・管理"
+    "🤖 AI一括", 
+    "✍️ 手動", 
+    "📊 分析", 
+    "📋 管理"
 ])
 
 MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "メタル", "3Dプリント", "その他"]
@@ -128,7 +99,7 @@ TYPE_LIST = ["クラウン", "ブリッジ", "インプラント", "義歯", "�
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
     st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。")
-    up_files = st.file_uploader("画像/PDF(複数選択・複数ページ対応)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
+    up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
 
     if up_files and KEY:
         if st.button("✨ 一括AI解析をスタート", type="primary"):
@@ -194,21 +165,22 @@ with tab1:
             
             with st.expander(f"👤 データ #{i+1} : {p_name} 様  |  🏥 {c_name}", expanded=False):
                 matching_file = next((f for f in f_list if f.name == d.get("_fn")), None)
-                col_img, col_form1, col_form2 = st.columns([2, 2, 2], gap="medium")
                 
-                with col_img:
-                    st.markdown("**🖼️ 元画像プレビュー**")
-                    if matching_file:
-                        if "pdf" in matching_file.type:
-                            st.info("PDFファイルです")
-                        else:
-                            try:
-                                st.image(matching_file, use_column_width=True, output_format="JPEG")
-                            except:
-                                st.warning("画像を表示できません")
+                st.markdown("**🖼️ 元画像プレビュー**")
+                if matching_file:
+                    if "pdf" in matching_file.type:
+                        st.info("PDFファイルです")
                     else:
-                        st.write("画像がありません")
+                        try:
+                            st.image(matching_file, use_column_width=True, output_format="JPEG")
+                        except:
+                            st.warning("画像を表示できません")
+                else:
+                    st.write("画像がありません")
+                
+                st.divider()
 
+                col_form1, col_form2 = st.columns(2)
                 with col_form1:
                     d["clinic_name"] = st.text_input("医院名 (必須)", d.get("clinic_name", ""), key=f"c_{i}")
                     d["patient_name"] = st.text_input("患者名 (必須)", d.get("patient_name", ""), key=f"p_{i}")
@@ -376,20 +348,20 @@ with tab3:
                     diff_str = f"{diff:+.2f}"
                 
                 return f"""
-                <div style="padding: 20px; border-radius: 12px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">{label}</p>
-                    <h2 style="margin: 10px 0; color: {color}; font-size: 32px; font-weight: 800;">{value:.2f}</h2>
-                    <p style="margin: 0; font-size: 13px; color: {color};">基準(3.0)からの誤差: {diff_str}</p>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
+                    <p style="margin: 0; font-size: 14px; font-weight: bold;">{label}</p>
+                    <h2 style="margin: 5px 0; color: {color}; font-size: 28px;">{value:.2f}</h2>
+                    <p style="margin: 0; font-size: 12px; color: {color};">基準誤差: {diff_str}</p>
                 </div>
                 """
 
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
-                <div style="padding: 20px; border-radius: 12px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">📄 対象件数</p>
-                    <h2 style="margin: 10px 0; color: #0F172A; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
-                    <p style="margin: 0; font-size: 13px; color: transparent;">-</p>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
+                    <p style="margin: 0; font-size: 14px; font-weight: bold;">📄 対象件数</p>
+                    <h2 style="margin: 5px 0; font-size: 28px;">{len(f_df)}<span style='font-size:14px;'>件</span></h2>
+                    <p style="margin: 0; font-size: 12px; color: transparent;">-</p>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -408,25 +380,25 @@ with tab3:
                 <html>
                 <head><meta charset="utf-8"><title>補綴物 品質分析レポート</title></head>
                 <body style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6; padding-bottom: 10px;">補綴物 品質分析レポート</h2>
+                    <h2 style="color: #3B82F6; border-bottom: 2px solid #3B82F6; padding-bottom: 10px;">補綴物 品質分析レポート</h2>
                     <p><strong>医院:</strong> {s_c} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>期間:</strong> {s_p} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>材料:</strong> {s_m}</p>
                     <p><strong>出力日:</strong> {date.today().isoformat()}</p>
                     <div style="background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                        <h3 style="color: #0F172A;">📊 総合評価 (適正値: 3.0)</h3>
+                        <h3>📊 総合評価 (適正値: 3.0)</h3>
                         <ul style="font-size: 16px;">
                             <li>対象件数: <strong>{len(f_df)} 件</strong></li>
                             <li>コンタクト平均: <strong>{c_m:.2f}</strong></li>
                             <li>バイト平均: <strong>{b_m:.2f}</strong></li>
                             <li>適合平均: <strong>{f_m:.2f}</strong></li>
                         </ul>
+                        <p style="font-size: 12px; color: #666;">※評価基準: 1(弱い) ～ 3(適正) ～ 5(強い)</p>
                     </div>
                 </body>
                 </html>
                 """
                 b64 = base64.b64encode(html_content.encode('utf-8')).decode()
-                href = f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #10B981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">📥 医院向けレポートを出力 (HTML形式)</a>'
+                href = f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #10B981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">📥 医院向けレポートを出力 (HTML)</a>'
                 st.markdown(href, unsafe_allow_html=True)
-                st.caption("※ダウンロードしたファイルを開き、「PDFとして保存」を選ぶと綺麗な資料になります。")
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
@@ -442,7 +414,7 @@ with tab3:
                 
             with col_chart2:
                 with st.container(border=True):
-                    st.markdown("**📊 スコア分布（歩留まり）**")
+                    st.markdown("**📊 スコア分布（歩留まりの確認）**")
                     if len(f_df) > 0:
                         dist_data = []
                         for col in ['contact', 'bite', 'fit']:
@@ -512,7 +484,7 @@ with tab4:
                 
                 with st.container(border=True):
                     if target_row.get('image_url'):
-                        st.image(target_row['image_url'], width=300, caption="アップロードされた評価シート")
+                        st.image(target_row['image_url'], width=300, caption="評価シート画像")
                         
                     with st.form("edit_form"):
                         col_e1, col_e2 = st.columns(2)
