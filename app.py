@@ -45,38 +45,10 @@ with tab1:
             with st.spinner("AIがシートの内容を抽出中..."):
                 try:
                     client = genai.Client(api_key=GEMINI_API_KEY)
-                    prompt = """
-                    このファイルは歯科補綴物のコミュニケーション評価シートです。
-                    以下の項目を抽出し、指定されたJSONフォーマットのみで出力してください。
-                    1. 医院名 (clinic_name)
-                    2. 患者名 (patient_name)
-                    3. 伝票番号 (slip_number)
-                    4. 補綴種別 (restoration_type) [例: クラウン, ブリッジ, インプラント, 義歯, その他]
-                    5. 部位・歯番 (tooth_position) [例: #16, 上顎前歯部 など]
-                    6. コンタクト評価 1~5の数値 (contact) [1:弱い, 3:適正, 5:強い]
-                    7. バイト評価 1~5の数値 (bite) [1:弱い, 3:適正, 5:強い]
-                    8. 適合評価 1~5の数値 (fit) [1:緩い, 3:適正, 5:きつい]
-                    9. その他コメント・注意事項 (comments)
-                    
-                    JSONフォーマット:
-                    {
-                      "clinic_name": "〇〇歯科",
-                      "patient_name": "山田太郎",
-                      "slip_number": "12345",
-                      "restoration_type": "クラウン",
-                      "tooth_position": "#16",
-                      "contact": 3,
-                      "bite": 4,
-                      "fit": 3,
-                      "comments": "コメント内容"
-                    }
-                    """
+                    prompt = "このファイルから以下を抽出してJSONのみ出力: clinic_name(医院名), patient_name(患者名), slip_number(伝票番号), restoration_type(クラウン/ブリッジ/インプラント/義歯/その他), tooth_position(部位・歯番), contact(コンタクト1-5), bite(バイト1-5), fit(適合1-5), comments(コメント)"
                     
                     if "pdf" in file_type:
-                        content_part = {
-                            "mime_type": "application/pdf",
-                            "data": file_bytes
-                        }
+                        content_part = {"mime_type": "application/pdf", "data": file_bytes}
                     else:
                         content_part = Image.open(io.BytesIO(file_bytes))
                         
@@ -86,4 +58,78 @@ with tab1:
                     )
                     
                     raw_text = response.text.strip()
-                    raw_text = raw_text.replace("```json", "").replace("
+                    if raw_text.startswith("```"):
+                        lines = raw_text.splitlines()
+                        raw_text = "\n".join(lines[1:-1])
+                    
+                    data = json.loads(raw_text)
+                    st.session_state["parsed_data"] = data
+                    st.session_state["uploaded_file_bytes"] = file_bytes
+                    st.session_state["uploaded_file_type"] = file_type
+                    
+                    st.success("AI解析が完了しました！")
+                except Exception as e:
+                    st.error(f"解析エラー: {e}")
+
+    if "parsed_data" in st.session_state:
+        p = st.session_state["parsed_data"]
+        st.markdown("---")
+        st.subheader("📝 抽出結果の確認・修正")
+        with st.form("eval_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                clinic_name = st.text_input("医院名", value=p.get("clinic_name", ""))
+                patient_name = st.text_input("患者名", value=p.get("patient_name", ""))
+                slip_number = st.text_input("伝票番号", value=p.get("slip_number", ""))
+                restoration_type = st.selectbox("補綴種別", ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"], 
+                                                 index=["クラウン", "ブリッジ", "インプラント", "義歯", "その他"].index(p.get("restoration_type", "クラウン")) if p.get("restoration_type") in ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"] else 0)
+                tooth_position = st.text_input("部位・歯番", value=p.get("tooth_position", ""))
+            with col2:
+                contact = st.slider("コンタクト", 1, 5, int(p.get("contact", 3)))
+                bite = st.slider("バイト", 1, 5, int(p.get("bite", 3)))
+                fit = st.slider("適合", 1, 5, int(p.get("fit", 3)))
+                comments = st.text_area("コメント", value=p.get("comments", ""))
+            
+            submit = st.form_submit_button("データベースへ保存", type="primary")
+            if submit and supabase:
+                image_url = None
+                if "uploaded_file_bytes" in st.session_state:
+                    is_pdf = "pdf" in st.session_state.get("uploaded_file_type", "")
+                    ext = "pdf" if is_pdf else "jpg"
+                    mime = "application/pdf" if is_pdf else "image/jpeg"
+                    file_name = f"{int(time.time())}_{slip_number}.{ext}"
+                    try:
+                        supabase.storage.from_("sheet_images").upload(file_name, st.session_state["uploaded_file_bytes"], {"content-type": mime})
+                        image_url = supabase.storage.from_("sheet_images").get_public_url(file_name)
+                    except Exception as img_err:
+                        pass
+
+                supabase.table("evaluations").insert({
+                    "clinic_name": clinic_name,
+                    "patient_name": patient_name,
+                    "slip_number": slip_number,
+                    "restoration_type": restoration_type,
+                    "tooth_position": tooth_position,
+                    "contact": contact,
+                    "bite": bite,
+                    "fit": fit,
+                    "comments": comments,
+                    "image_url": image_url
+                }).execute()
+                st.success("正常に保存されました！")
+                del st.session_state["parsed_data"]
+                if "uploaded_file_bytes" in st.session_state:
+                    del st.session_state["uploaded_file_bytes"]
+
+with tab2:
+    st.subheader("📊 医院別の傾向分析")
+    if supabase:
+        res = supabase.table("evaluations").select("*").execute()
+        if res.data:
+            df = pd.DataFrame(res.data)
+            clinic_list = ["すべて"] + list(df["clinic_name"].unique())
+            selected_clinic = st.selectbox("分析対象の医院を選択", clinic_list)
+            filtered_df = df if selected_clinic == "すべて" else df[df["clinic_name"] == selected_clinic]
+            
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("総評価件数", f"{len(filtered
