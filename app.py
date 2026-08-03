@@ -34,8 +34,12 @@ tab1, tab2, tab3 = st.tabs([
     "📋 履歴・編集・削除"
 ])
 
+# 材料の選択肢リスト
+MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "メタル", "3Dプリント", "その他"]
+TYPE_LIST = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
+
 with tab1:
-    st.subheader("シート一括登録（完成日対応）")
+    st.subheader("シート一括登録（AI解析）")
     up_files = st.file_uploader(
         "画像/PDF(複数選択・複数ページ対応)",
         type=["jpg", "png", "pdf"],
@@ -44,7 +48,7 @@ with tab1:
 
     if up_files and KEY:
         if st.button("一括AI解析"):
-            with st.spinner("解析および完成日抽出中..."):
+            with st.spinner("解析およびデータ抽出中..."):
                 c = genai.Client(api_key=KEY)
                 
                 prm = (
@@ -56,6 +60,7 @@ with tab1:
                     "- slip_number (伝票番号)\n"
                     "- completion_date (完成日、YYYY-MM-DD形式。記載がない場合は空文字)\n"
                     "- restoration_type (クラウン、ブリッジ、インプラント、義歯、その他のいずれか)\n"
+                    "- material (材料: ジルコニア、CAD/CAM冠、e.max、メタル、3Dプリント、その他のいずれか)\n"
                     "- tooth_position (部位)\n"
                     "- contact (コンタクト 1〜5の数値)\n"
                     "- bite (バイト 1〜5の数値)\n"
@@ -71,10 +76,7 @@ with tab1:
                     
                     try:
                         if "pdf" in f_t:
-                            cp = types.Part.from_bytes(
-                                data=f_b,
-                                mime_type="application/pdf"
-                            )
+                            cp = types.Part.from_bytes(data=f_b, mime_type="application/pdf")
                         else:
                             i_io = io.BytesIO(f_b)
                             cp = Image.open(i_io)
@@ -102,86 +104,48 @@ with tab1:
                         
                 st.session_state["r_list"] = r_list
                 st.session_state["f_list"] = up_files
-                st.success(f"合計 {len(r_list)} 件のデータを検出しました。内容を確認・手動修正してください。")
+                st.success(f"合計 {len(r_list)} 件のデータを検出しました。")
 
     if "r_list" in st.session_state:
         st.markdown("---")
         st.subheader("📝 抽出データの手動確認・修正")
-        
         r_list = st.session_state["r_list"]
         
         for i, d in enumerate(r_list):
             st.markdown(f"**📄 [{d.get('_fn', '')}] 検出データ #{i+1}**")
             col1, col2 = st.columns(2)
             with col1:
-                d["clinic_name"] = st.text_input(
-                    "医院名",
-                    d.get("clinic_name", ""),
-                    key=f"c_{i}"
-                )
-                d["patient_name"] = st.text_input(
-                    "患者名",
-                    d.get("patient_name", ""),
-                    key=f"p_{i}"
-                )
-                d["slip_number"] = st.text_input(
-                    "伝票番号",
-                    d.get("slip_number", ""),
-                    key=f"s_{i}"
-                )
+                d["clinic_name"] = st.text_input("医院名", d.get("clinic_name", ""), key=f"c_{i}")
+                d["patient_name"] = st.text_input("患者名", d.get("patient_name", ""), key=f"p_{i}")
+                d["slip_number"] = st.text_input("伝票番号", d.get("slip_number", ""), key=f"s_{i}")
                 
                 raw_date = d.get("completion_date", "")
                 def_date = date.today()
                 try:
-                    if raw_date:
-                        def_date = date.fromisoformat(str(raw_date)[:10])
-                except:
-                    pass
+                    if raw_date: def_date = date.fromisoformat(str(raw_date)[:10])
+                except: pass
                 
-                c_date = st.date_input(
-                    "完成日",
-                    value=def_date,
-                    key=f"dt_{i}"
-                )
+                c_date = st.date_input("完成日", value=def_date, key=f"dt_{i}")
                 d["completion_date"] = c_date.isoformat()
                 
             with col2:
-                t_list = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
                 r_def = d.get("restoration_type", "クラウン")
-                idx_t = 0
-                if r_def in t_list:
-                    idx_t = t_list.index(r_def)
-                    
-                d["restoration_type"] = st.selectbox(
-                    "種別",
-                    t_list,
-                    index=idx_t,
-                    key=f"rt_{i}"
-                )
+                idx_t = TYPE_LIST.index(r_def) if r_def in TYPE_LIST else 0
+                d["restoration_type"] = st.selectbox("種別", TYPE_LIST, index=idx_t, key=f"rt_{i}")
                 
-                d["tooth_position"] = st.text_input(
-                    "部位",
-                    d.get("tooth_position", ""),
-                    key=f"tp_{i}"
-                )
+                m_def = d.get("material", "ジルコニア")
+                idx_m = MATERIAL_LIST.index(m_def) if m_def in MATERIAL_LIST else 0
+                d["material"] = st.selectbox("材料", MATERIAL_LIST, index=idx_m, key=f"mat_{i}")
                 
-                v_c = int(d.get("contact", 3) or 3)
-                d["contact"] = st.slider("コンタクト", 1, 5, v_c, key=f"co_{i}")
+                d["tooth_position"] = st.text_input("部位", d.get("tooth_position", ""), key=f"tp_{i}")
                 
-                v_b = int(d.get("bite", 3) or 3)
-                d["bite"] = st.slider("バイト", 1, 5, v_b, key=f"bi_{i}")
-                
-                v_f = int(d.get("fit", 3) or 3)
-                d["fit"] = st.slider("適合", 1, 5, v_f, key=f"fi_{i}")
-                
-                d["comments"] = st.text_area(
-                    "コメント",
-                    d.get("comments", ""),
-                    key=f"cm_{i}"
-                )
+                d["contact"] = st.slider("コンタクト", 1, 5, int(d.get("contact", 3) or 3), key=f"co_{i}")
+                d["bite"] = st.slider("バイト", 1, 5, int(d.get("bite", 3) or 3), key=f"bi_{i}")
+                d["fit"] = st.slider("適合", 1, 5, int(d.get("fit", 3) or 3), key=f"fi_{i}")
+                d["comments"] = st.text_area("コメント", d.get("comments", ""), key=f"cm_{i}")
             st.divider()
 
-        if st.button("💾 全て保存"):
+        if st.button("💾 AI解析データを全て保存"):
             if db:
                 s_cnt = 0
                 f_list = st.session_state["f_list"]
@@ -195,13 +159,10 @@ with tab1:
                             pdf = "pdf" in f_t
                             ext = "pdf" if pdf else "jpg"
                             mime = "application/pdf" if pdf else "image/jpeg"
-                            
                             ts = int(time.time())
                             f_nm = f"{ts}_{i}.{ext}"
                             try:
-                                db.storage.from_("sheet_images").upload(
-                                    f_nm, f_b, {"content-type": mime}
-                                )
+                                db.storage.from_("sheet_images").upload(f_nm, f_b, {"content-type": mime})
                                 img_url = db.storage.from_("sheet_images").get_public_url(f_nm)
                             except Exception:
                                 pass
@@ -212,6 +173,7 @@ with tab1:
                             "slip_number": d.get("slip_number"),
                             "completion_date": d.get("completion_date"),
                             "restoration_type": d.get("restoration_type"),
+                            "material": d.get("material"),
                             "tooth_position": d.get("tooth_position"),
                             "contact": d.get("contact"),
                             "bite": d.get("bite"),
@@ -224,9 +186,49 @@ with tab1:
                 st.success(f"{s_cnt}件 保存完了しました！")
                 del st.session_state["r_list"]
                 del st.session_state["f_list"]
+                st.rerun()
+
+    st.markdown("---")
+    with st.expander("✍️ 画像を使わずに手動で新規登録する"):
+        with st.form("manual_entry_form"):
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                m_clinic = st.text_input("医院名")
+                m_patient = st.text_input("患者名")
+                m_slip = st.text_input("伝票番号")
+                m_date = st.date_input("完成日", value=date.today())
+            with col_m2:
+                m_type = st.selectbox("種別", TYPE_LIST)
+                m_material = st.selectbox("材料", MATERIAL_LIST)
+                m_pos = st.text_input("部位")
+                m_con = st.slider("コンタクト", 1, 5, 3)
+                m_bit = st.slider("バイト", 1, 5, 3)
+                m_fit = st.slider("適合", 1, 5, 3)
+                m_com = st.text_area("コメント")
+                
+            if st.form_submit_button("手動で登録する"):
+                if db:
+                    try:
+                        db.table("evaluations").insert({
+                            "clinic_name": m_clinic,
+                            "patient_name": m_patient,
+                            "slip_number": m_slip,
+                            "completion_date": m_date.isoformat(),
+                            "restoration_type": m_type,
+                            "material": m_material,
+                            "tooth_position": m_pos,
+                            "contact": m_con,
+                            "bite": m_bit,
+                            "fit": m_fit,
+                            "comments": m_com,
+                            "image_url": None
+                        }).execute()
+                        st.success("手動登録が完了しました！")
+                    except Exception as e:
+                        st.error(f"登録エラー: {e}")
 
 with tab2:
-    st.subheader("📊 分析（期間・直近の症例フィルター）")
+    st.subheader("📊 分析（期間・材料フィルター＆推移）")
     if db:
         res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
         
@@ -234,58 +236,60 @@ with tab2:
             df = pd.DataFrame(res.data)
             df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce')
             
-            col_f1, col_f2 = st.columns(2)
+            col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
                 clinics = ["すべて"] + list(df["clinic_name"].dropna().unique())
                 s_c = st.selectbox("医院で絞り込み", clinics)
             with col_f2:
                 periods = ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"]
-                s_p = st.selectbox("期間で絞り込み（完成日基準）", periods)
+                s_p = st.selectbox("期間で絞り込み", periods)
+            with col_f3:
+                materials_opt = ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique())
+                s_m = st.selectbox("材料で絞り込み", materials_opt)
             
             f_df = df.copy()
             if s_c != "すべて":
                 f_df = f_df[f_df["clinic_name"] == s_c]
+            if s_m != "すべて" and "material" in f_df.columns:
+                f_df = f_df[f_df["material"] == s_m]
                 
             today = pd.Timestamp.today()
-            if s_p == "直近1ヶ月":
-                f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=1))]
-            elif s_p == "直近2ヶ月":
-                f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=2))]
-            elif s_p == "直近3ヶ月":
-                f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=3))]
-            elif s_p == "直近6ヶ月":
-                f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=6))]
+            if s_p == "直近1ヶ月": f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=1))]
+            elif s_p == "直近2ヶ月": f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=2))]
+            elif s_p == "直近3ヶ月": f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=3))]
+            elif s_p == "直近6ヶ月": f_df = f_df[f_df['completion_date'] >= (today - pd.DateOffset(months=6))]
 
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("対象件数", len(f_df))
-            
             c_m = f_df['contact'].mean() if len(f_df) > 0 else 0
             b_m = f_df['bite'].mean() if len(f_df) > 0 else 0
             f_m = f_df['fit'].mean() if len(f_df) > 0 else 0
-            
             col2.metric("コン平均", f"{c_m:.2f}")
             col3.metric("バイト平均", f"{b_m:.2f}")
             col4.metric("適合平均", f"{f_m:.2f}")
 
-            if st.button("AI詳細分析"):
+            if st.button("AI詳細分析（材料・工法の傾向を含む）"):
                 with st.spinner("分析中..."):
                     c = genai.Client(api_key=KEY)
-                    cols = ['completion_date', 'restoration_type', 'contact', 'bite', 'fit', 'comments']
-                    dic = f_df[cols].to_dict(orient='records')
-                    prm = f"選択された条件（医院:{s_c}, 期間:{s_p}）の補綴物評価データの傾向と改善点を分析してください:\n{dic}"
-                    
-                    r_ai = c.models.generate_content(
-                        model='gemini-3.5-flash',
-                        contents=prm
-                    )
+                    cols = ['completion_date', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
+                    dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
+                    prm = f"条件（医院:{s_c}, 期間:{s_p}, 材料:{s_m}）の補綴物データの傾向を分析し、特に材料や設計による特徴・改善点を考察してください:\n{dic}"
+                    r_ai = c.models.generate_content(model='gemini-3.5-flash', contents=prm)
                     st.info(r_ai.text)
 
-            fig = px.bar(
-                x=["コンタクト", "バイト", "適合"],
-                y=[c_m, b_m, f_m],
-                range_y=[1, 5]
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            col_chart1, col_chart2 = st.columns(2)
+            with col_chart1:
+                st.markdown("**全体平均（バーチャート）**")
+                fig_bar = px.bar(x=["コンタクト", "バイト", "適合"], y=[c_m, b_m, f_m], range_y=[1, 5])
+                st.plotly_chart(fig_bar, use_container_width=True)
+                
+            with col_chart2:
+                st.markdown("**月別推移（折れ線グラフ）**")
+                if len(f_df) > 0:
+                    f_df['month'] = f_df['completion_date'].dt.to_period('M').astype(str)
+                    trend_df = f_df.groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
+                    fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5])
+                    st.plotly_chart(fig_line, use_container_width=True)
 
 with tab3:
     st.subheader("📋 履歴・編集・一括削除")
@@ -303,45 +307,54 @@ with tab3:
 
             csv = df.to_csv(index=False).encode('utf-8-sig')
             st.download_button("CSVダウンロード", csv, "evaluations.csv", "text/csv")
-            
             st.dataframe(df, use_container_width=True)
             
             st.markdown("---")
-            st.subheader("📝 保存済みデータの編集")
+            st.subheader("📝 保存済みデータの編集 (画像プレビュー付き)")
             edit_options = []
             edit_map = {}
             for _, row in df.iterrows():
-                label = f"ID: {row['id']} | 医院: {row['clinic_name']} | 患者: {row['patient_name']} (完成日: {row['completion_date']})"
+                label = f"ID: {row['id']} | 医院: {row['clinic_name']} | 患者: {row['patient_name']} ({row['completion_date']})"
                 edit_options.append(label)
                 edit_map[label] = row
                 
             selected_edit_label = st.selectbox("編集するデータを選択", edit_options, key="edit_select")
             if selected_edit_label:
                 target_row = edit_map[selected_edit_label]
+                
+                # 画像のプレビュー表示
+                if target_row.get('image_url'):
+                    st.image(target_row['image_url'], width=300, caption="アップロードされた評価シート")
+                else:
+                    st.info("※このデータには画像が紐付いていません。")
+                    
                 with st.form("edit_form"):
-                    st.markdown(f"**ID: {target_row['id']} の編集**")
-                    e_clinic = st.text_input("医院名", value=str(target_row.get('clinic_name') or ""))
-                    e_patient = st.text_input("患者名", value=str(target_row.get('patient_name') or ""))
-                    e_slip = st.text_input("伝票番号", value=str(target_row.get('slip_number') or ""))
-                    
-                    e_date_val = date.today()
-                    try:
-                        if target_row.get('completion_date'):
-                            e_date_val = date.fromisoformat(str(target_row['completion_date'])[:10])
-                    except:
-                        pass
-                    e_date = st.date_input("完成日", value=e_date_val)
-                    
-                    t_list = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
-                    r_def = target_row.get('restoration_type', "クラウン")
-                    e_idx = t_list.index(r_def) if r_def in t_list else 0
-                    e_type = st.selectbox("種別", t_list, index=e_idx)
-                    
-                    e_pos = st.text_input("部位", value=str(target_row.get('tooth_position') or ""))
-                    
-                    e_con = st.slider("コンタクト", 1, 5, int(target_row.get('contact') or 3))
-                    e_bit = st.slider("バイト", 1, 5, int(target_row.get('bite') or 3))
-                    e_fit = st.slider("適合", 1, 5, int(target_row.get('fit') or 3))
+                    col_e1, col_e2 = st.columns(2)
+                    with col_e1:
+                        e_clinic = st.text_input("医院名", value=str(target_row.get('clinic_name') or ""))
+                        e_patient = st.text_input("患者名", value=str(target_row.get('patient_name') or ""))
+                        e_slip = st.text_input("伝票番号", value=str(target_row.get('slip_number') or ""))
+                        
+                        e_date_val = date.today()
+                        try:
+                            if target_row.get('completion_date'):
+                                e_date_val = date.fromisoformat(str(target_row['completion_date'])[:10])
+                        except: pass
+                        e_date = st.date_input("完成日", value=e_date_val)
+                        
+                    with col_e2:
+                        r_def = target_row.get('restoration_type', "クラウン")
+                        e_idx_t = TYPE_LIST.index(r_def) if r_def in TYPE_LIST else 0
+                        e_type = st.selectbox("種別", TYPE_LIST, index=e_idx_t)
+                        
+                        m_def = target_row.get('material', "ジルコニア")
+                        e_idx_m = MATERIAL_LIST.index(m_def) if m_def in MATERIAL_LIST else 0
+                        e_material = st.selectbox("材料", MATERIAL_LIST, index=e_idx_m)
+                        
+                        e_pos = st.text_input("部位", value=str(target_row.get('tooth_position') or ""))
+                        e_con = st.slider("コンタクト", 1, 5, int(target_row.get('contact') or 3))
+                        e_bit = st.slider("バイト", 1, 5, int(target_row.get('bite') or 3))
+                        e_fit = st.slider("適合", 1, 5, int(target_row.get('fit') or 3))
                     
                     e_com = st.text_area("コメント", value=str(target_row.get('comments') or ""))
                     
@@ -353,6 +366,7 @@ with tab3:
                                 "slip_number": e_slip,
                                 "completion_date": e_date.isoformat(),
                                 "restoration_type": e_type,
+                                "material": e_material,
                                 "tooth_position": e_pos,
                                 "contact": e_con,
                                 "bite": e_bit,
@@ -360,14 +374,12 @@ with tab3:
                                 "comments": e_com
                             }).eq("id", target_row['id']).execute()
                             st.success("データを更新しました！画面を再読み込みしてください。")
-                            st.rerun()
                         except Exception as e:
                             st.error(f"更新エラー: {e}")
 
             st.markdown("---")
             st.subheader("🗑️ データの一括削除")
             st.markdown("削除したいデータにチェックを入れてください。")
-            
             selected_ids = []
             for _, row in df.iterrows():
                 chk_label = f"ID: {row['id']} | 医院: {row['clinic_name']} | 患者: {row['patient_name']} ({row['completion_date']})"
