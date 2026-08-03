@@ -34,88 +34,101 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 with tab1:
-    st.subheader("シートアップロード")
-    up_file = st.file_uploader(
-        "画像またはPDF",
-        type=["jpg", "png", "pdf"]
+    st.subheader("シート一括アップロード（複数ページ対応）")
+    up_files = st.file_uploader(
+        "画像/PDF(複数選択・複数ページ対応)",
+        type=["jpg", "png", "pdf"],
+        accept_multiple_files=True
     )
 
-    if up_file and KEY:
-        f_byte = up_file.read()
-        f_type = up_file.type
-
-        if "image" in f_type:
-            try:
-                img_io = io.BytesIO(f_byte)
-                img = Image.open(img_io)
-                st.image(img, use_container_width=True)
-            except Exception:
-                pass
-        elif "pdf" in f_type:
-            st.info("PDF選択中")
-
-        if st.button("AI解析"):
-            with st.spinner("解析中"):
-                try:
-                    c = genai.Client(api_key=KEY)
-                    prm = (
-                        "以下をJSONで抽出:\n"
-                        "clinic_name\n"
-                        "patient_name\n"
-                        "slip_number\n"
-                        "restoration_type\n"
-                        "tooth_position\n"
-                        "contact\n"
-                        "bite\n"
-                        "fit\n"
-                        "comments"
-                    )
+    if up_files and KEY:
+        if st.button("一括AI解析"):
+            with st.spinner("複数ページを自動分解して解析中..."):
+                c = genai.Client(api_key=KEY)
+                
+                # 複数枚/複数ページを自動で分解してリスト（配列）で返すように指示
+                prm = (
+                    "このファイルには1枚または複数の補綴物評価シート（複数患者分など）が含まれている場合があります。\n"
+                    "含まれているすべてのシートを個別に検出し、以下のキーを持つJSONオブジェクトの「配列（リスト: [...]）」形式で抽出してください。\n"
+                    "各項目のキー:\n"
+                    "- clinic_name\n"
+                    "- patient_name\n"
+                    "- slip_number\n"
+                    "- restoration_type\n"
+                    "- tooth_position\n"
+                    "- contact\n"
+                    "- bite\n"
+                    "- fit\n"
+                    "- comments\n"
+                    "必ずJSONの配列形式（例: [{...}, {...}]）のみを出力してください。"
+                )
+                
+                r_list = []
+                for idx, f in enumerate(up_files):
+                    f_b = f.getvalue()
+                    f_t = f.type
                     
-                    if "pdf" in f_type:
-                        cp = types.Part.from_bytes(
-                            data=f_byte,
-                            mime_type="application/pdf"
+                    try:
+                        if "pdf" in f_t:
+                            cp = types.Part.from_bytes(
+                                data=f_b,
+                                mime_type="application/pdf"
+                            )
+                        else:
+                            i_io = io.BytesIO(f_b)
+                            cp = Image.open(i_io)
+                            
+                        res = c.models.generate_content(
+                            model='gemini-3.5-flash',
+                            contents=[cp, prm]
                         )
-                    else:
-                        i_io = io.BytesIO(f_byte)
-                        cp = Image.open(i_io)
+                        
+                        txt = res.text.strip()
+                        if txt.startswith("```"):
+                            lines = txt.splitlines()
+                            txt = "\n".join(lines[1:-1])
+                            
+                        parsed = json.loads(txt)
+                        
+                        # AIが単体オブジェクトで返した場合のケア（リストに変換）
+                        if isinstance(parsed, dict):
+                            parsed = [parsed]
+                            
+                        for item in parsed:
+                            item["_fn"] = f.name
+                            r_list.append(item)
+                        
+                    except Exception as e:
+                        st.error(f"{f.name} エラー: {e}")
+                        
+                st.session_state["r_list"] = r_list
+                st.session_state["f_list"] = up_files
+                st.success(f"合計 {len(r_list)} 件のデータを検出しました")
 
-                    # 💡ここを最新かつ無料枠対象の gemini-3.5-flash に変更しました
-                    res = c.models.generate_content(
-                        model='gemini-3.5-flash',
-                        contents=[cp, prm]
-                    )
-
-                    txt = res.text.strip()
-                    if txt.startswith("```"):
-                        lines = txt.splitlines()
-                        txt = "\n".join(lines[1:-1])
-
-                    d = json.loads(txt)
-                    st.session_state["d"] = d
-                    st.session_state["f_b"] = f_byte
-                    st.session_state["f_t"] = f_type
-                    st.success("完了")
-                except Exception as e:
-                    st.error(f"エラー: {e}")
-
-    if "d" in st.session_state:
-        d = st.session_state["d"]
+    if "r_list" in st.session_state:
         st.markdown("---")
-        with st.form("form"):
+        st.subheader("📝 抽出されたデータの確認・修正")
+        
+        r_list = st.session_state["r_list"]
+        
+        for i, d in enumerate(r_list):
+            st.markdown(f"**📄 [{d.get('_fn', '')}] 検出データ #{i+1}**")
             col1, col2 = st.columns(2)
             with col1:
-                c_n = st.text_input(
+                d["clinic_name"] = st.text_input(
                     "医院",
-                    d.get("clinic_name", "")
+                    d.get("clinic_name", ""),
+                    key=f"c_{i}"
                 )
-                p_n = st.text_input(
+                d["patient_name"] = st.text_input(
                     "患者",
-                    d.get("patient_name", "")
+                    d.get("patient_name", ""),
+                    key=f"p_{i}"
                 )
-                s_n = st.text_input(
+                d["slip_number"] = st.text_input(
                     "伝票",
-                    d.get("slip_number", "")
+                    d.get("slip_number", ""),
+                    key=f"s_{i}"
                 )
                 
                 t_list = [
@@ -129,88 +142,112 @@ with tab1:
                     "restoration_type",
                     "クラウン"
                 )
-                idx = 0
+                idx_t = 0
                 if r_def in t_list:
-                    idx = t_list.index(r_def)
-                
-                r_t = st.selectbox(
+                    idx_t = t_list.index(r_def)
+                    
+                d["restoration_type"] = st.selectbox(
                     "種別",
                     t_list,
-                    index=idx
+                    index=idx_t,
+                    key=f"rt_{i}"
                 )
                 
-                t_p = st.text_input(
+                d["tooth_position"] = st.text_input(
                     "部位",
-                    d.get("tooth_position", "")
+                    d.get("tooth_position", ""),
+                    key=f"tp_{i}"
                 )
             with col2:
-                v_c = int(d.get("contact", 3))
-                con = st.slider(
+                v_c = d.get("contact", 3)
+                try:
+                    v_c = int(v_c)
+                except:
+                    v_c = 3
+                d["contact"] = st.slider(
                     "コンタクト",
-                    1, 5, v_c
+                    1, 5, v_c,
+                    key=f"co_{i}"
                 )
                 
-                v_b = int(d.get("bite", 3))
-                bit = st.slider(
+                v_b = d.get("bite", 3)
+                try:
+                    v_b = int(v_b)
+                except:
+                    v_b = 3
+                d["bite"] = st.slider(
                     "バイト",
-                    1, 5, v_b
+                    1, 5, v_b,
+                    key=f"bi_{i}"
                 )
                 
-                v_f = int(d.get("fit", 3))
-                fit = st.slider(
+                v_f = d.get("fit", 3)
+                try:
+                    v_f = int(v_f)
+                except:
+                    v_f = 3
+                d["fit"] = st.slider(
                     "適合",
-                    1, 5, v_f
+                    1, 5, v_f,
+                    key=f"fi_{i}"
                 )
                 
-                com = st.text_area(
+                d["comments"] = st.text_area(
                     "コメント",
-                    d.get("comments", "")
+                    d.get("comments", ""),
+                    key=f"cm_{i}"
                 )
+            st.divider()
 
-            sub = st.form_submit_button("保存")
-            
-            if sub and db:
-                img_url = None
-                if "f_b" in st.session_state:
-                    f_t = st.session_state["f_t"]
-                    pdf = "pdf" in f_t
-                    ext = "pdf" if pdf else "jpg"
-                    mime = "application/pdf" if pdf else "image/jpeg"
-                    
-                    ts = int(time.time())
-                    f_nm = f"{ts}.{ext}"
-                    try:
-                        f_b = st.session_state["f_b"]
-                        db.storage.from_(
-                            "sheet_images"
-                        ).upload(
-                            f_nm,
-                            f_b,
-                            {"content-type": mime}
-                        )
-                        img_url = db.storage.from_(
-                            "sheet_images"
-                        ).get_public_url(f_nm)
-                    except Exception:
-                        pass
+        if st.button("💾 全て保存"):
+            if db:
+                s_cnt = 0
+                f_list = st.session_state["f_list"]
+                with st.spinner("保存中..."):
+                    for i, d in enumerate(r_list):
+                        img_url = None
+                        # 画像アップロード（複数ある場合は最初のファイルを紐付け、必要に応じて調整）
+                        if len(f_list) > 0:
+                            f_obj = f_list[0]
+                            f_b = f_obj.getvalue()
+                            f_t = f_obj.type
+                            pdf = "pdf" in f_t
+                            ext = "pdf" if pdf else "jpg"
+                            mime = "application/pdf" if pdf else "image/jpeg"
+                            
+                            ts = int(time.time())
+                            f_nm = f"{ts}_{i}.{ext}"
+                            try:
+                                db.storage.from_(
+                                    "sheet_images"
+                                ).upload(
+                                    f_nm,
+                                    f_b,
+                                    {"content-type": mime}
+                                )
+                                img_url = db.storage.from_(
+                                    "sheet_images"
+                                ).get_public_url(f_nm)
+                            except Exception:
+                                pass
 
-                db.table("evaluations").insert({
-                    "clinic_name": c_n,
-                    "patient_name": p_n,
-                    "slip_number": s_n,
-                    "restoration_type": r_t,
-                    "tooth_position": t_p,
-                    "contact": con,
-                    "bite": bit,
-                    "fit": fit,
-                    "comments": com,
-                    "image_url": img_url
-                }).execute()
-                
-                st.success("保存完了")
-                del st.session_state["d"]
-                if "f_b" in st.session_state:
-                    del st.session_state["f_b"]
+                        db.table("evaluations").insert({
+                            "clinic_name": d.get("clinic_name"),
+                            "patient_name": d.get("patient_name"),
+                            "slip_number": d.get("slip_number"),
+                            "restoration_type": d.get("restoration_type"),
+                            "tooth_position": d.get("tooth_position"),
+                            "contact": d.get("contact"),
+                            "bite": d.get("bite"),
+                            "fit": d.get("fit"),
+                            "comments": d.get("comments"),
+                            "image_url": img_url
+                        }).execute()
+                        s_cnt += 1
+                        
+                st.success(f"{s_cnt}件 保存完了")
+                del st.session_state["r_list"]
+                del st.session_state["f_list"]
 
 with tab2:
     st.subheader("📊 分析")
@@ -253,7 +290,6 @@ with tab2:
                     dic = f_df[cols].to_dict()
                     prm = f"({s_c})の傾向:{dic}"
                     
-                    # 💡こちらも gemini-3.5-flash に変更
                     r_ai = c.models.generate_content(
                         model='gemini-3.5-flash',
                         contents=prm
