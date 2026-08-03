@@ -12,14 +12,15 @@ from datetime import date
 import base64
 
 # --- 1. ページ全体の初期設定 ---
+# タブの名前（ブラウザのタブに表示される名前）
 st.set_page_config(
-    page_title="AI分析 Pro",
+    page_title="AI分析 Pro (大阪センター)",
     page_icon="🦷",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. スマホ対応・スタイリッシュCSS ---
+# --- 2. スタイリッシュ化のためのカスタムCSS ---
 st.markdown("""
 <style>
     /* Streamlit標準のメニューとフッターを隠す */
@@ -27,11 +28,16 @@ st.markdown("""
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
+    /* アプリ全体の背景色をほんのり明るいグレーに */
+    .stApp {
+        background-color: #F8F9FA;
+    }
+    
     /* タイトルの装飾（スマホでも綺麗に収まる可変サイズ） */
     .custom-title {
-        font-size: clamp(1.5rem, 6vw, 2.2rem);
+        font-size: clamp(1.3rem, 5vw, 2.0rem);
         font-weight: 800;
-        color: #3B82F6;
+        color: #1E3A8A;
         margin-bottom: 5px;
         line-height: 1.3;
     }
@@ -68,8 +74,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- カスタムヘッダー ---
-st.markdown('<div class="custom-title">🦷 補綴物評価 AI分析 Pro</div>', unsafe_allow_html=True)
+# --- カスタムヘッダー（新しいアプリ名） ---
+st.markdown('<div class="custom-title">🦷 セパレートレスモデル評価 AI分析<br><span style="font-size: 0.7em; color: #64748B;">(大阪センター)</span></div>', unsafe_allow_html=True)
 st.markdown('<div class="title-underline"></div>', unsafe_allow_html=True)
 
 # --- データベース等の初期化 ---
@@ -85,7 +91,6 @@ def get_db():
 
 db = get_db()
 
-# スマホで見やすいようにタブの名前を少し短くしました
 tab1, tab2, tab3, tab4 = st.tabs([
     "🤖 AI一括", 
     "✍️ 手動", 
@@ -338,58 +343,68 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            def render_metric(label, value):
-                if value == 0:
+            # 平均の計算
+            c_m = f_df['contact'].mean() if len(f_df) > 0 else 0
+            b_m = f_df['bite'].mean() if len(f_df) > 0 else 0
+            f_m = f_df['fit'].mean() if len(f_df) > 0 else 0
+
+            # 適正率（スコアが3の割合）の計算
+            c_opt = (f_df['contact'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
+            b_opt = (f_df['bite'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
+            f_opt = (f_df['fit'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
+            
+            # ★メイン指標を「適正率」に変更したスコアカード
+            def render_metric(label, mean_val, opt_rate):
+                if mean_val == 0:
                     color = "#9e9e9e"
-                    diff_str = "-"
+                    mean_str = "-"
+                    opt_str = "- %"
                 else:
-                    diff = value - 3.0
-                    color = "#10B981" if abs(diff) <= 0.99 else "#EF4444"
-                    diff_str = f"{diff:+.2f}"
+                    diff = mean_val - 3.0
+                    # 適正率が80%以上なら緑、それ未満なら注意(オレンジ〜赤)
+                    color = "#10B981" if opt_rate >= 80 else ("#F59E0B" if opt_rate >= 50 else "#EF4444")
+                    mean_str = f"{mean_val:.2f} (誤差 {diff:+.2f})"
+                    opt_str = f"{opt_rate:.1f}%"
                 
                 return f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
-                    <p style="margin: 0; font-size: 14px; font-weight: bold;">{label}</p>
-                    <h2 style="margin: 5px 0; color: {color}; font-size: 28px;">{value:.2f}</h2>
-                    <p style="margin: 0; font-size: 12px; color: {color};">基準誤差: {diff_str}</p>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">{label} (適正率)</p>
+                    <h2 style="margin: 10px 0; color: {color}; font-size: 32px; font-weight: 800;">{opt_str}</h2>
+                    <p style="margin: 0; font-size: 13px; color: #64748B;">平均点: {mean_str}</p>
                 </div>
                 """
 
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
-                    <p style="margin: 0; font-size: 14px; font-weight: bold;">📄 対象件数</p>
-                    <h2 style="margin: 5px 0; font-size: 28px;">{len(f_df)}<span style='font-size:14px;'>件</span></h2>
-                    <p style="margin: 0; font-size: 12px; color: transparent;">-</p>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">📄 対象件数</p>
+                    <h2 style="margin: 10px 0; color: #0F172A; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
+                    <p style="margin: 0; font-size: 13px; color: transparent;">-</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            c_m = f_df['contact'].mean() if len(f_df) > 0 else 0
-            b_m = f_df['bite'].mean() if len(f_df) > 0 else 0
-            f_m = f_df['fit'].mean() if len(f_df) > 0 else 0
-
-            with col2: st.markdown(render_metric("コンタクト平均", c_m), unsafe_allow_html=True)
-            with col3: st.markdown(render_metric("バイト平均", b_m), unsafe_allow_html=True)
-            with col4: st.markdown(render_metric("適合平均", f_m), unsafe_allow_html=True)
+            with col2: st.markdown(render_metric("コンタクト", c_m, c_opt), unsafe_allow_html=True)
+            with col3: st.markdown(render_metric("バイト", b_m, b_opt), unsafe_allow_html=True)
+            with col4: st.markdown(render_metric("適合", f_m, f_opt), unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
             if len(f_df) > 0:
                 html_content = f"""
                 <html>
-                <head><meta charset="utf-8"><title>補綴物 品質分析レポート</title></head>
+                <head><meta charset="utf-8"><title>セパレートレスモデル 品質分析レポート</title></head>
                 <body style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #3B82F6; border-bottom: 2px solid #3B82F6; padding-bottom: 10px;">補綴物 品質分析レポート</h2>
+                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6; padding-bottom: 10px;">セパレートレスモデル 品質分析レポート (大阪センター)</h2>
                     <p><strong>医院:</strong> {s_c} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>期間:</strong> {s_p} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>材料:</strong> {s_m}</p>
                     <p><strong>出力日:</strong> {date.today().isoformat()}</p>
                     <div style="background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                        <h3>📊 総合評価 (適正値: 3.0)</h3>
+                        <h3 style="color: #0F172A;">📊 総合評価（評価「3」の割合）</h3>
                         <ul style="font-size: 16px;">
                             <li>対象件数: <strong>{len(f_df)} 件</strong></li>
-                            <li>コンタクト平均: <strong>{c_m:.2f}</strong></li>
-                            <li>バイト平均: <strong>{b_m:.2f}</strong></li>
-                            <li>適合平均: <strong>{f_m:.2f}</strong></li>
+                            <li>コンタクト適正率: <strong>{c_opt:.1f}%</strong> (平均: {c_m:.2f})</li>
+                            <li>バイト適正率: <strong>{b_opt:.1f}%</strong> (平均: {b_m:.2f})</li>
+                            <li>適合適正率: <strong>{f_opt:.1f}%</strong> (平均: {f_m:.2f})</li>
                         </ul>
                         <p style="font-size: 12px; color: #666;">※評価基準: 1(弱い) ～ 3(適正) ～ 5(強い)</p>
                     </div>
