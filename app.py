@@ -338,11 +338,10 @@ with tab3:
             with col3: st.markdown(render_metric("バイト", b_m, b_opt), unsafe_allow_html=True)
             with col4: st.markdown(render_metric("適合", f_m, f_opt), unsafe_allow_html=True)
 
-            # ★ 新機能: 医院 × 材料 のクロス集計 ＆ 品質偏差アラート検知
+            # ★ 新機能: 医院 × 材料 のクロス集計 ＆ 品質偏差アラート検知 (バグ修正済み)
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0 and 'material' in f_df.columns:
                 with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=True):
-                    # 各組合せごとの平均集計 (サンプル数3件以上に対象を絞る)
                     cross_df = f_df.groupby(['clinic_name', 'material']).agg(
                         件数=('id', 'count'),
                         コンタクト平均=('contact', 'mean'),
@@ -350,13 +349,13 @@ with tab3:
                         適合平均=('fit', 'mean')
                     ).reset_index()
                     
-                    # 異常検知ルール（例: 平均スコアが3.4以上 または 2.6以下）
                     alerts = []
                     for _, row in cross_df[cross_df['件数'] >= 2].iterrows():
+                        # ここで 'バイト平均' などの正しい日本語キーを使用するように修正しました
                         if row['バイト平均'] >= 3.4:
-                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが高めの傾向があります（平均: {row['bite平均']:.2f}）")
+                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが高めの傾向があります（平均: {row['バイト平均']:.2f}）")
                         elif row['バイト平均'] <= 2.6:
-                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが低めの傾向があります（平均: {row['bite平均']:.2f}）")
+                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが低めの傾向があります（平均: {row['バイト平均']:.2f}）")
                             
                         if row['コンタクト平均'] >= 3.4:
                             alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがきつい傾向があります（平均: {row['コンタクト平均']:.2f}）")
