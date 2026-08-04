@@ -176,11 +176,11 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録 (精度優先 ➔ 高容量切り替え版)
+# Tab 1: AI一括登録 (分割バッチ処理・進捗バー付き)
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
-    st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。")
+    st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。大量の枚数でも安全に処理されます。")
     up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
@@ -200,36 +200,64 @@ with tab1:
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
             
             r_list = []
-            for idx, f in enumerate(up_files):
-                try:
-                    if "pdf" in f.type:
-                        cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
-                    else:
-                        img = Image.open(io.BytesIO(f.getvalue()))
-                        img = ImageOps.exif_transpose(img)
-                        img = ImageEnhance.Contrast(img).enhance(1.2)
-                        cp = img
+            
+            # 📦 バッチ処理の設定（5枚ずつ束にして処理）
+            BATCH_SIZE = 5
+            total_files = len(up_files)
+            
+            # 進捗バーの表示
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # 束（チャンク）ごとにループ処理
+            for i in range(0, total_files, BATCH_SIZE):
+                chunk_files = up_files[i : i + BATCH_SIZE]
+                current_end = min(i + BATCH_SIZE, total_files)
+                
+                # 画面のテキストを更新
+                status_text.markdown(f"**⏳ 処理中... {i + 1}〜{current_end}枚目 / 全{total_files}枚**")
+                
+                for idx, f in enumerate(chunk_files):
+                    actual_idx = i + idx # 全体の中での本当のインデックス番号
                     
-                    # ★ 精度優先のフォールバック設計（最高精度 3.5 Flash ➔ 上限500回の 3.5 Flash Lite ➔ 2.5 Flash）
-                    res = None
                     try:
-                        res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
-                    except Exception as e_3_5:
+                        if "pdf" in f.type:
+                            cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
+                        else:
+                            img = Image.open(io.BytesIO(f.getvalue()))
+                            img = ImageOps.exif_transpose(img)
+                            img = ImageEnhance.Contrast(img).enhance(1.2)
+                            cp = img
+                        
+                        # ★ 精度優先のフォールバック設計
+                        res = None
                         try:
-                            res = c.models.generate_content(model='gemini-3.5-flash-lite', contents=[cp, prm], config=ai_config)
-                            st.toast(f"ファイル {f.name}: Gemini 3.5 Flash Lite で自動代替解析しました", icon="ℹ️")
-                        except Exception as e_3_5_lite:
-                            res = c.models.generate_content(model='gemini-2.5-flash', contents=[cp, prm], config=ai_config)
-                            st.toast(f"ファイル {f.name}: Gemini 2.5 Flash で自動代替解析しました", icon="ℹ️")
+                            res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
+                        except Exception:
+                            try:
+                                res = c.models.generate_content(model='gemini-3.5-flash-lite', contents=[cp, prm], config=ai_config)
+                                st.toast(f"ファイル {f.name}: 3.5 Flash Lite で代替解析しました", icon="ℹ️")
+                            except Exception:
+                                res = c.models.generate_content(model='gemini-2.5-flash', contents=[cp, prm], config=ai_config)
+                                st.toast(f"ファイル {f.name}: 2.5 Flash で代替解析しました", icon="ℹ️")
 
-                    if res and res.text:
-                        parsed = json.loads(res.text.strip())
-                        if isinstance(parsed, dict): parsed = [parsed]
-                        for item in parsed:
-                            item["_f_idx"] = idx 
-                            r_list.append(item)
-                except Exception as e:
-                    st.error(f"ファイル解析エラー ({f.name}): {e}")
+                        if res and res.text:
+                            parsed = json.loads(res.text.strip())
+                            if isinstance(parsed, dict): parsed = [parsed]
+                            for item in parsed:
+                                item["_f_idx"] = actual_idx 
+                                r_list.append(item)
+                    except Exception as e:
+                        st.error(f"ファイル解析エラー ({f.name}): {e}")
+                
+                # 1つの束が終わるごとに進捗バーを更新し、AI側へ休憩を入れる
+                progress_ratio = current_end / total_files
+                progress_bar.progress(progress_ratio)
+                time.sleep(1.0) # 1秒待機（API制限回避）
+            
+            # 処理完了時に進捗バーを消す
+            status_text.empty()
+            progress_bar.empty()
             
             st.session_state["r_list"] = r_list
             st.session_state["f_list"] = up_files
