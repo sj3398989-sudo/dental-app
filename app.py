@@ -62,7 +62,6 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
-    /* ⌨️ キーボード操作最適化用の視覚スタイル */
     input:focus, select:focus, textarea:focus {
         outline: 2px solid #3B82F6 !important;
         border-radius: 4px;
@@ -77,7 +76,6 @@ st.markdown("""
         display: inline-block;
     }
     
-    /* アラートカードスタイル */
     .alert-card {
         padding: 12px 16px;
         border-left: 4px solid #EF4444;
@@ -114,12 +112,29 @@ def safe_int(val, default=3):
         return default
 
 def save_evaluation_data(d, file_obj=None, idx=0):
+    """保存処理（保存時のみ画像リサイズ＆JPEG高効率圧縮を実行）"""
     img_url = None
     if file_obj and db:
         f_b = file_obj.getvalue()
         is_pdf = "pdf" in file_obj.type
         ext, mime = ("pdf", "application/pdf") if is_pdf else ("jpg", "image/jpeg")
         f_nm = f"{int(time.time())}_{idx}.{ext}"
+        
+        # ★ 保存時のみ圧縮処理（画像の場合）
+        if not is_pdf:
+            try:
+                img = Image.open(io.BytesIO(f_b))
+                img = ImageOps.exif_transpose(img)
+                # 長辺1200pxにリサイズ（画質を損なわずにファイルサイズを1/20にする）
+                img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                buf = io.BytesIO()
+                img.save(buf, format='JPEG', quality=80, optimize=True)
+                f_b = buf.getvalue()
+            except Exception:
+                pass
+                
         try:
             db.storage.from_("sheet_images").upload(f_nm, f_b, {"content-type": mime})
             img_url = db.storage.from_("sheet_images").get_public_url(f_nm)
@@ -189,6 +204,7 @@ with tab1:
                     if "pdf" in f.type:
                         cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
                     else:
+                        # ★ AI解析には無圧縮の最高画質（コントラスト補正のみ）で送信
                         img = Image.open(io.BytesIO(f.getvalue()))
                         img = ImageOps.exif_transpose(img)
                         img = ImageEnhance.Contrast(img).enhance(1.2)
@@ -255,7 +271,7 @@ with tab1:
                 st.rerun()
 
 # ------------------------------------------
-# Tab 2: 手動登録（ショートカット・フォーカス対応）
+# Tab 2: 手動登録
 # ------------------------------------------
 with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
@@ -289,7 +305,7 @@ with tab2:
                     st.toast("手動登録が完了しました！", icon="✅")
 
 # ------------------------------------------
-# Tab 3: 分析ダッシュボード (クロス集計 ＆ AIアラート追加)
+# Tab 3: 分析ダッシュボード
 # ------------------------------------------
 with tab3:
     st.markdown("### 📊 品質分析ダッシュボード")
@@ -338,7 +354,6 @@ with tab3:
             with col3: st.markdown(render_metric("バイト", b_m, b_opt), unsafe_allow_html=True)
             with col4: st.markdown(render_metric("適合", f_m, f_opt), unsafe_allow_html=True)
 
-            # ★ 新機能: 医院 × 材料 のクロス集計 ＆ 品質偏差アラート検知 (バグ修正済み)
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0 and 'material' in f_df.columns:
                 with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=True):
@@ -351,7 +366,6 @@ with tab3:
                     
                     alerts = []
                     for _, row in cross_df[cross_df['件数'] >= 2].iterrows():
-                        # ここで 'バイト平均' などの正しい日本語キーを使用するように修正しました
                         if row['バイト平均'] >= 3.4:
                             alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが高めの傾向があります（平均: {row['バイト平均']:.2f}）")
                         elif row['バイト平均'] <= 2.6:
@@ -492,6 +506,19 @@ with tab4:
                                 "tooth_position": e_pos, "contact": e_con, "bite": e_bit, "fit": e_fit, "comments": e_com
                             }).eq("id", target_row['id']).execute()
                             st.success("データを更新しました！画面を再読み込みしてください。")
+
+            st.markdown("---")
+            # ★ 新機能: 既存データの一括更新機能（全データの材料をCAD/CAM冠に変更）
+            with st.expander("🔧 既存データの一括更新（材料をCAD/CAM冠に変更）", expanded=False):
+                st.info("現在データベースに保存されているすべての評価データの「材料」項目を、一括で「CAD/CAM冠」に変更します。")
+                if st.button("⚠️ 全データの材料を「CAD/CAM冠」に更新する"):
+                    try:
+                        db.table("evaluations").update({"material": "CAD/CAM冠"}).neq("id", 0).execute()
+                        st.success("🎉 全データの材料を「CAD/CAM冠」に一括更新しました！")
+                        time.sleep(1.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"一括更新エラー: {e}")
 
             st.markdown("---")
             with st.expander("🧹 1年経過した古い画像を削除（文字データは残す・容量節約）", expanded=False):
