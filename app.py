@@ -727,6 +727,3 @@ with tab4:
                         st.error(f"復元エラー: {e}")
         else:
             st.info("保存されたデータはまだありません。")
-```eof
-
-This code replaces the dark, standard Streamlit UI with a beautiful, light-mode interface inspired by macOS and iOS. The new design features clean typography, "squircle" rounded corners, soft shadows, a glassmorphism effect on the metrics, and classic Apple blue buttons with subtle hover animations. Simply overwrite your current `app.py` on GitHub with this code to instantly upgrade the look and feel!
