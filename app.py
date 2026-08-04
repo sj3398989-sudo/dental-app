@@ -12,82 +12,135 @@ from datetime import date
 import base64
 
 # ==========================================
-# 1. アプリケーション初期設定 & CSS
+# 1. アプリケーション初期設定 & CSS (Apple風ライトモード)
 # ==========================================
-st.set_page_config(page_title="AI品質管理カルテ (大阪センター)", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
-    #MainMenu, header, footer {visibility: hidden;}
-    .stApp {background-color: transparent !important;}
-    
-    .custom-title {
-        font-size: clamp(1.3rem, 5vw, 2.0rem);
-        font-weight: 800;
-        color: #3B82F6;
-        margin-bottom: 5px;
-        line-height: 1.3;
+    /* 全体の背景とフォント (Apple風) */
+    .stApp {
+        background-color: #F5F5F7 !important; 
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Arial, sans-serif !important;
     }
-    .title-underline {
-        height: 4px;
-        background: linear-gradient(90deg, #3B82F6, #14B8A6);
-        border-radius: 2px;
-        width: 80px;
+    #MainMenu, header, footer {visibility: hidden;}
+    
+    /* タイトル周り */
+    .custom-title {
+        font-size: clamp(1.8rem, 5vw, 2.4rem);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: #1D1D1F;
         margin-bottom: 20px;
     }
+    
+    /* プライマリボタン (Apple Blue) */
     .stButton>button[kind="primary"] {
-        background: linear-gradient(135deg, #3B82F6, #14B8A6);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        transition: all 0.3s ease;
+        background-color: #007AFF !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 12px !important;
+        padding: 0.6rem 1.2rem !important;
+        font-weight: 600 !important;
+        font-size: 15px !important;
+        letter-spacing: 0.01em;
+        box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25) !important;
+        transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
     }
     .stButton>button[kind="primary"]:hover {
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-        transform: translateY(-2px);
+        background-color: #0062CC !important;
+        transform: scale(0.98) !important; /* クリック時の心地よい沈み込み */
+        box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2) !important;
     }
+    
+    /* 枠やコンテナ (カードUIのなめらかな角丸と影) */
+    div[data-testid="stVerticalBlock"] > div[style*="border"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid rgba(0,0,0,0.05) !important;
+        border-radius: 18px !important; /* Squircle風の角丸 */
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04) !important;
+        padding: 24px !important;
+    }
+    
+    /* Expander (折りたたみ) */
     .streamlit-expanderHeader {
-        border-radius: 8px;
-        border: 1px solid rgba(128, 128, 128, 0.2);
-    }
-    .metric-card {
-        padding: 15px; 
-        border-radius: 8px; 
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        background-color: transparent; 
-        text-align: center; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        background-color: #FFFFFF !important;
+        border-radius: 14px !important;
+        border: 1px solid #E5E5EA !important;
+        font-weight: 600 !important;
+        color: #1D1D1F !important;
     }
     
+    /* 入力フォーム */
+    input, select, textarea {
+        background-color: #F2F2F7 !important;
+        border: 1px solid transparent !important;
+        border-radius: 10px !important;
+        color: #1D1D1F !important;
+        transition: all 0.2s ease !important;
+    }
     input:focus, select:focus, textarea:focus {
-        outline: 2px solid #3B82F6 !important;
-        border-radius: 4px;
-    }
-    .shortcut-guide {
-        font-size: 0.8rem;
-        color: #64748B;
-        background-color: rgba(59, 130, 246, 0.1);
-        padding: 4px 8px;
-        border-radius: 4px;
-        margin-bottom: 10px;
-        display: inline-block;
+        background-color: #FFFFFF !important;
+        border: 1px solid #007AFF !important;
+        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important;
     }
     
+    /* メトリックカード（数値表示・グラスモーフィズム効果） */
+    .metric-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        padding: 24px; 
+        border-radius: 20px; 
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        text-align: center; 
+        box-shadow: 0 8px 32px rgba(0,0,0,0.06);
+    }
+    .metric-card h2 {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif;
+        letter-spacing: -0.04em;
+    }
+    
+    /* タブのスタイリング */
+    button[data-baseweb="tab"] {
+        background-color: transparent !important;
+        font-weight: 600 !important;
+        color: #8E8E93 !important;
+        font-size: 15px !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #1D1D1F !important;
+    }
+    div[data-baseweb="tab-highlight"] {
+        background-color: #1D1D1F !important;
+        height: 3px !important;
+        border-radius: 3px 3px 0 0 !important;
+    }
+    
+    /* ガイド・アラート類 */
+    .shortcut-guide {
+        font-size: 0.85rem;
+        color: #1D1D1F;
+        background: rgba(0, 122, 255, 0.08);
+        padding: 8px 14px;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        display: inline-block;
+        font-weight: 500;
+    }
     .alert-card {
-        padding: 12px 16px;
-        border-left: 4px solid #EF4444;
-        background-color: rgba(239, 68, 68, 0.08);
-        border-radius: 4px;
-        margin-bottom: 8px;
+        padding: 14px 18px;
+        border-left: 4px solid #FF3B30; /* Apple Red */
+        background-color: rgba(255, 59, 48, 0.05);
+        border-radius: 12px;
+        margin-bottom: 10px;
+        color: #1D1D1F;
+        font-weight: 500;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="custom-title">🦷 AI品質管理カルテ<br><span style="font-size: 0.7em; color: #888;">(大阪センター)</span></div>', unsafe_allow_html=True)
-st.markdown('<div class="title-underline"></div>', unsafe_allow_html=True)
+st.markdown('<div class="custom-title">🦷 AI品質管理カルテ <span style="font-size: 0.5em; font-weight: 500; color: #8E8E93;">(大阪センター)</span></div>', unsafe_allow_html=True)
 
 # ==========================================
 # 2. データベース接続 & 共通関数
@@ -113,7 +166,6 @@ def safe_int(val, default=3):
         return default
 
 def upload_file_to_storage(file_obj, suffix_idx):
-    """画像の圧縮・保存を行い、URLを返す共通処理"""
     if not file_obj or not db: return None
     f_b = file_obj.getvalue()
     is_pdf = "pdf" in file_obj.type
@@ -138,7 +190,6 @@ def upload_file_to_storage(file_obj, suffix_idx):
         return None
 
 def save_single_evaluation(d, file_obj=None):
-    """手動入力用の単発保存"""
     img_url = upload_file_to_storage(file_obj, 0)
     db.table("evaluations").insert({
         "clinic_name": d.get("clinic_name"),
@@ -163,11 +214,11 @@ def display_file_preview(file_obj):
     if "pdf" in file_obj.type:
         try:
             b64_pdf = base64.b64encode(file_obj.getvalue()).decode('utf-8')
-            st.markdown(f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="450" style="border: 1px solid rgba(128,128,128,0.2); border-radius: 8px;"></iframe>', unsafe_allow_html=True)
+            st.markdown(f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="450" style="border: 1px solid #E5E5EA; border-radius: 12px;"></iframe>', unsafe_allow_html=True)
         except Exception:
             st.warning("PDFを表示できません")
     else:
-        try: st.image(file_obj.getvalue(), use_container_width=True)
+        try: st.image(file_obj.getvalue(), use_container_width=True, style={"border-radius": "12px"})
         except Exception: st.warning("画像を表示できません")
 
 # ==========================================
@@ -176,7 +227,7 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録 (分割バッチ処理・進捗バー付き)
+# Tab 1: AI一括登録
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -200,26 +251,19 @@ with tab1:
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
             
             r_list = []
-            
-            # 📦 バッチ処理の設定（5枚ずつ束にして処理）
             BATCH_SIZE = 5
             total_files = len(up_files)
             
-            # 進捗バーの表示
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # 束（チャンク）ごとにループ処理
             for i in range(0, total_files, BATCH_SIZE):
                 chunk_files = up_files[i : i + BATCH_SIZE]
                 current_end = min(i + BATCH_SIZE, total_files)
-                
-                # 画面のテキストを更新
                 status_text.markdown(f"**⏳ 処理中... {i + 1}〜{current_end}枚目 / 全{total_files}枚**")
                 
                 for idx, f in enumerate(chunk_files):
-                    actual_idx = i + idx # 全体の中での本当のインデックス番号
-                    
+                    actual_idx = i + idx 
                     try:
                         if "pdf" in f.type:
                             cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
@@ -229,7 +273,6 @@ with tab1:
                             img = ImageEnhance.Contrast(img).enhance(1.2)
                             cp = img
                         
-                        # ★ 精度優先のフォールバック設計
                         res = None
                         try:
                             res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
@@ -250,12 +293,10 @@ with tab1:
                     except Exception as e:
                         st.error(f"ファイル解析エラー ({f.name}): {e}")
                 
-                # 1つの束が終わるごとに進捗バーを更新し、AI側へ休憩を入れる
                 progress_ratio = current_end / total_files
                 progress_bar.progress(progress_ratio)
-                time.sleep(1.0) # 1秒待機（API制限回避）
+                time.sleep(1.0)
             
-            # 処理完了時に進捗バーを消す
             status_text.empty()
             progress_bar.empty()
             
@@ -433,18 +474,19 @@ with tab3:
             f_m, f_opt = get_stats('fit')
             
             def render_metric(label, mean_val, opt_rate):
-                if mean_val == 0: return f'<div class="metric-card"><p style="font-weight:bold;">{label}</p><h2>- %</h2></div>'
-                color = "#10B981" if opt_rate >= 80 else ("#F59E0B" if opt_rate >= 50 else "#EF4444")
+                if mean_val == 0: return f'<div class="metric-card"><p style="font-weight:bold; color: #1D1D1F;">{label}</p><h2 style="color: #1D1D1F;">- %</h2></div>'
+                # Apple風のカラーリング (Green, Orange, Red)
+                color = "#34C759" if opt_rate >= 80 else ("#FF9500" if opt_rate >= 50 else "#FF3B30")
                 return f"""
                 <div class="metric-card">
-                    <p style="margin: 0; font-size: 14px; font-weight: bold;">{label} (適正率)</p>
-                    <h2 style="margin: 10px 0; color: {color}; font-size: 32px; font-weight: 800;">{opt_rate:.1f}%</h2>
-                    <p style="margin: 0; font-size: 13px;">平均点: {mean_val:.2f} (誤差 {mean_val-3.0:+.2f})</p>
+                    <p style="margin: 0; font-size: 14px; font-weight: 600; color: #8E8E93;">{label} (適正率)</p>
+                    <h2 style="margin: 10px 0; color: {color}; font-size: 34px; font-weight: 800;">{opt_rate:.1f}%</h2>
+                    <p style="margin: 0; font-size: 13px; color: #1D1D1F; font-weight: 500;">平均点: {mean_val:.2f} <span style="color:#8E8E93;">(誤差 {mean_val-3.0:+.2f})</span></p>
                 </div>
                 """
 
             col1, col2, col3, col4 = st.columns(4)
-            with col1: st.markdown(f'<div class="metric-card"><p style="margin: 0; font-size: 14px; font-weight: bold;">📄 対象件数</p><h2 style="margin: 10px 0; font-size: 32px; font-weight: 800;">{len(f_df)}<span style="font-size:16px;">件</span></h2><p style="margin: 0; font-size: 13px; color: transparent;">-</p></div>', unsafe_allow_html=True)
+            with col1: st.markdown(f'<div class="metric-card"><p style="margin: 0; font-size: 14px; font-weight: 600; color: #8E8E93;">📄 対象件数</p><h2 style="margin: 10px 0; font-size: 34px; font-weight: 800; color: #1D1D1F;">{len(f_df)}<span style="font-size:16px;">件</span></h2><p style="margin: 0; font-size: 13px; color: transparent;">-</p></div>', unsafe_allow_html=True)
             with col2: st.markdown(render_metric("コンタクト", c_m, c_opt), unsafe_allow_html=True)
             with col3: st.markdown(render_metric("バイト", b_m, b_opt), unsafe_allow_html=True)
             with col4: st.markdown(render_metric("適合", f_m, f_opt), unsafe_allow_html=True)
@@ -489,8 +531,6 @@ with tab3:
                 with st.spinner("AIがデータを分析中..."):
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                     dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
-                    
-                    # ★ 修正ポイント：Pythonで正確に数えた件数を明記してAIの勘違いを防ぐ
                     prm = f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
                     
                     res_ai = None
@@ -512,8 +552,10 @@ with tab3:
                     st.markdown("**📈 月別推移（品質トレンド）**")
                     if len(f_df) > 0:
                         trend_df = f_df.assign(month=f_df['completion_date'].dt.to_period('M').astype(str)).groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
-                        fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5])
-                        fig_line.add_hline(y=3.0, line_dash="dash", line_color="#3B82F6", annotation_text="適正値 (3.0)")
+                        # グラフの色合いもApple風に変更
+                        fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5], color_discrete_sequence=['#007AFF', '#5AC8FA', '#34C759'])
+                        fig_line.add_hline(y=3.0, line_dash="dash", line_color="#8E8E93", annotation_text="適正値 (3.0)")
+                        fig_line.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig_line, use_container_width=True)
                 
             with col_chart2:
@@ -526,31 +568,33 @@ with tab3:
                             for col in ['contact', 'bite', 'fit']
                             for score, count in f_df[col].value_counts().reindex([1,2,3,4,5], fill_value=0).items()
                         ]
-                        fig_dist = px.bar(pd.DataFrame(dist_data), x='評価項目', y='件数', color='スコア', color_discrete_map={'1': '#93C5FD', '2': '#BFDBFE', '3': '#10B981', '4': '#FDBA74', '5': '#F97316'}, barmode='stack', text='割合')
+                        # スコアの色分けをAppleのシグナルカラーに
+                        apple_colors = {'1': '#007AFF', '2': '#5AC8FA', '3': '#34C759', '4': '#FF9500', '5': '#FF3B30'}
+                        fig_dist = px.bar(pd.DataFrame(dist_data), x='評価項目', y='件数', color='スコア', color_discrete_map=apple_colors, barmode='stack', text='割合')
                         fig_dist.update_traces(textposition='inside', textfont_size=16)
-                        fig_dist.update_layout(xaxis=dict(tickfont=dict(size=18, color="#3B82F6", weight="bold"), title=""), yaxis=dict(title="件数"))
+                        fig_dist.update_layout(xaxis=dict(tickfont=dict(size=16, color="#1D1D1F", weight="bold"), title=""), yaxis=dict(title="件数"), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig_dist, use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0:
                 html = f"""
                 <html><head><meta charset="utf-8"><title>品質分析レポート</title></head>
-                <body style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6;">AI品質管理カルテ (大阪センター)</h2>
-                    <p>医院: {s_c} | 種別: {s_st} | 材料: {s_m} | 出力日: {date.today().isoformat()}</p>
-                    <div style="background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                        <h3 style="color: #0F172A;">📊 総合評価（評価「3」の割合）</h3>
-                        <ul style="font-size: 16px;">
+                <body style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; padding: 30px; color: #1D1D1F; background-color: #F5F5F7;">
+                    <h2 style="color: #1D1D1F; border-bottom: 2px solid #E5E5EA; padding-bottom: 10px;">AI品質管理カルテ (大阪センター)</h2>
+                    <p style="color: #8E8E93; font-weight: 500;">医院: {s_c} | 種別: {s_st} | 材料: {s_m} | 出力日: {date.today().isoformat()}</p>
+                    <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+                        <h3 style="color: #1D1D1F; margin-top: 0;">📊 総合評価（適正スコア「3」の割合）</h3>
+                        <ul style="font-size: 16px; line-height: 1.8;">
                             <li>対象件数: <strong>{len(f_df)} 件</strong></li>
-                            <li>コンタクト適正率: <strong>{c_opt:.1f}%</strong> (平均: {c_m:.2f})</li>
-                            <li>バイト適正率: <strong>{b_opt:.1f}%</strong> (平均: {b_m:.2f})</li>
-                            <li>適合適正率: <strong>{f_opt:.1f}%</strong> (平均: {f_m:.2f})</li>
+                            <li>コンタクト適正率: <strong>{c_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均: {c_m:.2f})</span></li>
+                            <li>バイト適正率: <strong>{b_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均: {b_m:.2f})</span></li>
+                            <li>適合適正率: <strong>{f_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均: {f_m:.2f})</span></li>
                         </ul>
                     </div>
                 </body></html>
                 """
                 b64 = base64.b64encode(html.encode('utf-8')).decode()
-                st.markdown(f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #10B981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">📥 医院向けレポートを出力 (HTML)</a>', unsafe_allow_html=True)
+                st.markdown(f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #007AFF; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);">📥 医院向けレポートを出力 (HTML)</a>', unsafe_allow_html=True)
 
 # ------------------------------------------
 # Tab 4: 履歴・管理
@@ -585,7 +629,7 @@ with tab4:
                     img_url = target_row.get('image_url')
                     if img_url:
                         if ".pdf" in img_url.lower():
-                            st.markdown(f'<iframe src="{img_url}" width="100%" height="450" style="border: 1px solid rgba(128,128,128,0.2); border-radius: 8px;"></iframe>', unsafe_allow_html=True)
+                            st.markdown(f'<iframe src="{img_url}" width="100%" height="450" style="border: 1px solid #E5E5EA; border-radius: 12px;"></iframe>', unsafe_allow_html=True)
                         else:
                             st.image(img_url, use_container_width=True, caption="評価シート画像")
                         
@@ -666,18 +710,13 @@ with tab4:
                 
                 if restore_file and st.button("⚠️ CSVからデータを一括復元する", type="primary"):
                     try:
-                        # CSVを読み込む
                         df_restore = pd.read_csv(restore_file)
-                        
-                        # 既存のIDと衝突しないよう、ID列が含まれていれば除外して新規登録として扱う
                         if 'id' in df_restore.columns:
                             df_restore = df_restore.drop(columns=['id'])
                             
-                        # データに変換
                         records = df_restore.to_dict(orient="records")
                         
                         with st.spinner("データをデータベースに復元中..."):
-                            # Supabaseに一括インサート
                             if records:
                                 db.table("evaluations").insert(records).execute()
                                 
@@ -688,3 +727,6 @@ with tab4:
                         st.error(f"復元エラー: {e}")
         else:
             st.info("保存されたデータはまだありません。")
+```eof
+
+This code replaces the dark, standard Streamlit UI with a beautiful, light-mode interface inspired by macOS and iOS. The new design features clean typography, "squircle" rounded corners, soft shadows, a glassmorphism effect on the metrics, and classic Apple blue buttons with subtle hover animations. Simply overwrite your current `app.py` on GitHub with this code to instantly upgrade the look and feel!
