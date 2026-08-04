@@ -33,7 +33,7 @@ st.markdown("""
         background: linear-gradient(90deg, #3B82F6, #14B8A6);
         border-radius: 2px;
         width: 80px;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
     }
     .stButton>button[kind="primary"] {
         background: linear-gradient(135deg, #3B82F6, #14B8A6);
@@ -60,6 +60,30 @@ st.markdown("""
         background-color: transparent; 
         text-align: center; 
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    /* ⌨️ キーボード操作最適化用の視覚スタイル */
+    input:focus, select:focus, textarea:focus {
+        outline: 2px solid #3B82F6 !important;
+        border-radius: 4px;
+    }
+    .shortcut-guide {
+        font-size: 0.8rem;
+        color: #64748B;
+        background-color: rgba(59, 130, 246, 0.1);
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        display: inline-block;
+    }
+    
+    /* アラートカードスタイル */
+    .alert-card {
+        padding: 12px 16px;
+        border-left: 4px solid #EF4444;
+        background-color: rgba(239, 68, 68, 0.08);
+        border-radius: 4px;
+        margin-bottom: 8px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -140,7 +164,7 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録 (精度強化版)
+# Tab 1: AI一括登録
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -150,26 +174,14 @@ with tab1:
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
             c = genai.Client(api_key=KEY)
-            
-            # ★ 抽出ルールを具体化し、情報漏れを防ぐ最強プロンプト
             prm = (
-                "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順とルールに厳密に従ってデータを抽出してください。\n\n"
-                "【抽出ルール】\n"
-                "1. 画像全体をくまなくスキャンし、記載されているテキストやチェックマークを全て正確に読み取ってください。\n"
-                "2. 評価の数値（contact, bite, fit）は1〜5の整数です。丸（〇）で囲まれている数字や、チェック（✓）が入っている数字を優先してください。訂正線がある場合は修正後を採用してください。\n"
-                "3. 部位（tooth_position）は、歯科領域の歯式表記をそのまま残して抽出してください。\n"
-                "4. 読み取れない項目や未記載の項目は推測で補完せず、必ず空文字（\"\"）にしてください。\n\n"
-                "【出力形式】\n"
-                "以下のキーを持つJSONオブジェクトの配列（リスト: [...]）形式で出力してください。\n"
+                "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
+                "1. 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
+                "2. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
                 "キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
                 "restoration_type, material, tooth_position, contact, bite, fit, comments"
             )
-            
-            # ★ AIの創造性を消し、JSON出力のみに固定する設定
-            ai_config = types.GenerateContentConfig(
-                temperature=0.0, 
-                response_mime_type="application/json"
-            )
+            ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
             
             r_list = []
             for idx, f in enumerate(up_files):
@@ -177,18 +189,12 @@ with tab1:
                     if "pdf" in f.type:
                         cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
                     else:
-                        # ★ 画像の事前クレンジング（回転補正 ＆ コントラスト強調）
                         img = Image.open(io.BytesIO(f.getvalue()))
-                        img = ImageOps.exif_transpose(img) # スマホの回転情報を補正
-                        img = ImageEnhance.Contrast(img).enhance(1.2) # コントラストを20%上げて文字をくっきりさせる
+                        img = ImageOps.exif_transpose(img)
+                        img = ImageEnhance.Contrast(img).enhance(1.2)
                         cp = img
                         
-                    res = c.models.generate_content(
-                        model='gemini-3.5-flash', 
-                        contents=[cp, prm], 
-                        config=ai_config
-                    )
-                    
+                    res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
                     parsed = json.loads(res.text.strip())
                     if isinstance(parsed, dict): parsed = [parsed]
                     for item in parsed:
@@ -203,6 +209,7 @@ with tab1:
 
     if "r_list" in st.session_state:
         st.markdown("<br>### 📝 抽出データの確認と修正", unsafe_allow_html=True)
+        st.markdown('<div class="shortcut-guide">⌨️ PCナビゲーション: <b>Tab</b> で入力欄を移動できます</div>', unsafe_allow_html=True)
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
         for i, d in enumerate(r_list):
@@ -248,26 +255,27 @@ with tab1:
                 st.rerun()
 
 # ------------------------------------------
-# Tab 2: 手動登録
+# Tab 2: 手動登録（ショートカット・フォーカス対応）
 # ------------------------------------------
 with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
+    st.markdown('<div class="shortcut-guide">⌨️ PCナビゲーション: <b>Tab</b> で順にフォーカス移動、<b>Enter</b> で送信が可能です</div>', unsafe_allow_html=True)
     with st.container(border=True):
-        with st.form("manual_entry_form"):
+        with st.form("manual_entry_form", clear_on_submit=True):
             c1, c2 = st.columns(2)
             with c1:
-                m_clinic = st.text_input("🏥 医院名 (必須)")
-                m_patient = st.text_input("👤 患者名 (必須)")
-                m_slip = st.text_input("📝 伝票番号")
-                m_date = st.date_input("📅 完成日", value=date.today())
+                m_clinic = st.text_input("🏥 医院名 (必須)", key="m_c")
+                m_patient = st.text_input("👤 患者名 (必須)", key="m_p")
+                m_slip = st.text_input("📝 伝票番号", key="m_s")
+                m_date = st.date_input("📅 完成日", value=date.today(), key="m_d")
             with c2:
-                m_type = st.selectbox("🦷 種別", TYPE_LIST)
-                m_material = st.selectbox("💎 材料", MATERIAL_LIST)
-                m_pos = st.text_input("📍 部位")
-                m_con = st.slider("コンタクト", 1, 5, 3)
-                m_bit = st.slider("バイト", 1, 5, 3)
-                m_fit = st.slider("適合", 1, 5, 3)
-            m_com = st.text_area("💬 コメント")
+                m_type = st.selectbox("🦷 種別", TYPE_LIST, key="m_t")
+                m_material = st.selectbox("💎 材料", MATERIAL_LIST, key="m_m")
+                m_pos = st.text_input("📍 部位", key="m_pos")
+                m_con = st.slider("コンタクト", 1, 5, 3, key="m_co")
+                m_bit = st.slider("バイト", 1, 5, 3, key="m_bi")
+                m_fit = st.slider("適合", 1, 5, 3, key="m_fi")
+            m_com = st.text_area("💬 コメント", key="m_cm")
                 
             if st.form_submit_button("手動で登録する", type="primary"):
                 if not m_clinic or not m_patient:
@@ -281,7 +289,7 @@ with tab2:
                     st.toast("手動登録が完了しました！", icon="✅")
 
 # ------------------------------------------
-# Tab 3: 分析ダッシュボード
+# Tab 3: 分析ダッシュボード (クロス集計 ＆ AIアラート追加)
 # ------------------------------------------
 with tab3:
     st.markdown("### 📊 品質分析ダッシュボード")
@@ -329,6 +337,43 @@ with tab3:
             with col2: st.markdown(render_metric("コンタクト", c_m, c_opt), unsafe_allow_html=True)
             with col3: st.markdown(render_metric("バイト", b_m, b_opt), unsafe_allow_html=True)
             with col4: st.markdown(render_metric("適合", f_m, f_opt), unsafe_allow_html=True)
+
+            # ★ 新機能: 医院 × 材料 のクロス集計 ＆ 品質偏差アラート検知
+            st.markdown("<br>", unsafe_allow_html=True)
+            if len(f_df) > 0 and 'material' in f_df.columns:
+                with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=True):
+                    # 各組合せごとの平均集計 (サンプル数3件以上に対象を絞る)
+                    cross_df = f_df.groupby(['clinic_name', 'material']).agg(
+                        件数=('id', 'count'),
+                        コンタクト平均=('contact', 'mean'),
+                        バイト平均=('bite', 'mean'),
+                        適合平均=('fit', 'mean')
+                    ).reset_index()
+                    
+                    # 異常検知ルール（例: 平均スコアが3.4以上 または 2.6以下）
+                    alerts = []
+                    for _, row in cross_df[cross_df['件数'] >= 2].iterrows():
+                        if row['バイト平均'] >= 3.4:
+                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが高めの傾向があります（平均: {row['bite平均']:.2f}）")
+                        elif row['バイト平均'] <= 2.6:
+                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが低めの傾向があります（平均: {row['bite平均']:.2f}）")
+                            
+                        if row['コンタクト平均'] >= 3.4:
+                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがきつい傾向があります（平均: {row['コンタクト平均']:.2f}）")
+                        elif row['コンタクト平均'] <= 2.6:
+                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがゆるい傾向があります（平均: {row['コンタクト平均']:.2f}）")
+
+                    if alerts:
+                        st.markdown("<b>【自動検知された品質アラート】</b>", unsafe_allow_html=True)
+                        for alt in alerts:
+                            st.markdown(f'<div class="alert-card">{alt}</div>', unsafe_allow_html=True)
+                    else:
+                        st.success("✅ 特定の医院×材料における顕著な品質偏差（大きなズレ）は検出されませんでした。")
+
+                    st.markdown("<br><b>【医院 × 材料別 スコアマトリクス】</b>", unsafe_allow_html=True)
+                    st.dataframe(cross_df.style.format({
+                        'コンタクト平均': '{:.2f}', 'バイト平均': '{:.2f}', '適合平均': '{:.2f}'
+                    }), use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
@@ -380,7 +425,6 @@ with tab3:
                             <li>バイト適正率: <strong>{b_opt:.1f}%</strong> (平均: {b_m:.2f})</li>
                             <li>適合適正率: <strong>{f_opt:.1f}%</strong> (平均: {f_m:.2f})</li>
                         </ul>
-                        <p style="font-size: 12px; color: #666;">※評価基準: 1(弱い) ～ 3(適正) ～ 5(強い)</p>
                     </div>
                 </body></html>
                 """
