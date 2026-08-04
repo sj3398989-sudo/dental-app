@@ -112,40 +112,40 @@ def safe_int(val, default=3):
     except (ValueError, TypeError):
         return default
 
-def save_evaluation_data(d, file_obj=None, idx=0):
-    """保存処理（保存時のみ画像リサイズ＆JPEG高効率圧縮を実行）"""
-    img_url = None
-    if file_obj and db:
-        f_b = file_obj.getvalue()
-        is_pdf = "pdf" in file_obj.type
-        ext, mime = ("pdf", "application/pdf") if is_pdf else ("jpg", "image/jpeg")
-        f_nm = f"{int(time.time())}_{idx}.{ext}"
-        
-        if not is_pdf:
-            try:
-                img = Image.open(io.BytesIO(f_b))
-                img = ImageOps.exif_transpose(img)
-                img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
-                if img.mode != 'RGB':
-                    img = img.convert('RGB')
-                buf = io.BytesIO()
-                img.save(buf, format='JPEG', quality=80, optimize=True)
-                f_b = buf.getvalue()
-            except Exception:
-                pass
-                
+def upload_file_to_storage(file_obj, suffix_idx):
+    """画像の圧縮・保存を行い、URLを返す共通処理"""
+    if not file_obj or not db: return None
+    f_b = file_obj.getvalue()
+    is_pdf = "pdf" in file_obj.type
+    ext, mime = ("pdf", "application/pdf") if is_pdf else ("jpg", "image/jpeg")
+    f_nm = f"{int(time.time())}_{suffix_idx}.{ext}"
+    
+    if not is_pdf:
         try:
-            db.storage.from_("sheet_images").upload(f_nm, f_b, {"content-type": mime})
-            img_url = db.storage.from_("sheet_images").get_public_url(f_nm)
-        except Exception:
-            pass
+            img = Image.open(io.BytesIO(f_b))
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+            if img.mode != 'RGB': img = img.convert('RGB')
+            buf = io.BytesIO()
+            img.save(buf, format='JPEG', quality=80, optimize=True)
+            f_b = buf.getvalue()
+        except Exception: pass
+        
+    try:
+        db.storage.from_("sheet_images").upload(f_nm, f_b, {"content-type": mime})
+        return db.storage.from_("sheet_images").get_public_url(f_nm)
+    except Exception:
+        return None
 
+def save_single_evaluation(d, file_obj=None):
+    """手動入力用の単発保存"""
+    img_url = upload_file_to_storage(file_obj, 0)
     db.table("evaluations").insert({
         "clinic_name": d.get("clinic_name"),
         "patient_name": d.get("patient_name"),
         "slip_number": d.get("slip_number"),
         "completion_date": d.get("completion_date"),
-        "sheet_type": d.get("sheet_type", "セパレートレス模型"), # ★ 追加
+        "sheet_type": d.get("sheet_type", "セパレートレス模型"),
         "restoration_type": d.get("restoration_type"),
         "material": d.get("material"),
         "tooth_position": d.get("tooth_position"),
@@ -160,7 +160,6 @@ def display_file_preview(file_obj):
     if not file_obj:
         st.write("ファイルがありません")
         return
-        
     if "pdf" in file_obj.type:
         try:
             b64_pdf = base64.b64encode(file_obj.getvalue()).decode('utf-8')
@@ -168,10 +167,8 @@ def display_file_preview(file_obj):
         except Exception:
             st.warning("PDFを表示できません")
     else:
-        try:
-            st.image(file_obj.getvalue(), use_container_width=True)
-        except Exception:
-            st.warning("画像を表示できません")
+        try: st.image(file_obj.getvalue(), use_container_width=True)
+        except Exception: st.warning("画像を表示できません")
 
 # ==========================================
 # 3. 画面描画 (Tabs)
@@ -179,7 +176,7 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録
+# Tab 1: AI一括登録 (Excel風エディタ ＆ バルクインサート版)
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -195,7 +192,7 @@ with tab1:
                 "2. 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
                 "3. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
                 "キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
-                "sheet_type (IOS または セパレートレス模型), " # ★ 追加
+                "sheet_type (IOS または セパレートレス模型), "
                 "restoration_type, material, tooth_position, contact, bite, fit, comments"
             )
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
@@ -226,52 +223,103 @@ with tab1:
 
     if "r_list" in st.session_state:
         st.markdown("<br>### 📝 抽出データの確認と修正", unsafe_allow_html=True)
-        st.markdown('<div class="shortcut-guide">⌨️ PCナビゲーション: <b>Tab</b> で入力欄を移動できます</div>', unsafe_allow_html=True)
+        st.markdown('<div class="shortcut-guide">⌨️ Excelのように表を直接クリックして修正できます。<b>Tab</b>キーで右へサクサク移動可能です。</div>', unsafe_allow_html=True)
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
-        for i, d in enumerate(r_list):
-            with st.expander(f"👤 データ #{i+1} : {d.get('patient_name', '未入力')} 様  |  🏥 {d.get('clinic_name', '未入力')}", expanded=False):
-                col_img, col_form1, col_form2 = st.columns([2, 2, 2], gap="medium")
-                
-                with col_img:
-                    st.markdown("**🖼️ 元画像/PDFプレビュー**")
-                    f_idx = d.get("_f_idx")
-                    display_file_preview(f_list[f_idx] if (f_idx is not None and f_idx < len(f_list)) else None)
-                
-                with col_form1:
-                    d["clinic_name"] = st.text_input("医院名 (必須)", d.get("clinic_name", ""), key=f"c_{i}")
-                    d["patient_name"] = st.text_input("患者名 (必須)", d.get("patient_name", ""), key=f"p_{i}")
-                    d["slip_number"] = st.text_input("伝票番号", d.get("slip_number", ""), key=f"s_{i}")
-                    try: def_date = date.fromisoformat(str(d.get("completion_date", ""))[:10])
-                    except: def_date = date.today()
-                    d["completion_date"] = st.date_input("完成日", value=def_date, key=f"dt_{i}").isoformat()
-                    
-                    # ★ シート種別の選択を追加
-                    st_val = d.get("sheet_type", "セパレートレス模型")
-                    d["sheet_type"] = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, index=SHEET_TYPE_LIST.index(st_val) if st_val in SHEET_TYPE_LIST else 0, key=f"st_{i}")
-                    
-                with col_form2:
-                    d["restoration_type"] = st.selectbox("種別", TYPE_LIST, index=TYPE_LIST.index(d.get("restoration_type")) if d.get("restoration_type") in TYPE_LIST else 0, key=f"rt_{i}")
-                    d["material"] = st.selectbox("材料", MATERIAL_LIST, index=MATERIAL_LIST.index(d.get("material")) if d.get("material") in MATERIAL_LIST else 0, key=f"mat_{i}")
-                    d["tooth_position"] = st.text_input("部位", d.get("tooth_position", ""), key=f"tp_{i}")
-                    d["contact"] = st.slider("コンタクト", 1, 5, safe_int(d.get("contact")), key=f"co_{i}")
-                    d["bite"] = st.slider("バイト", 1, 5, safe_int(d.get("bite")), key=f"bi_{i}")
-                    d["fit"] = st.slider("適合", 1, 5, safe_int(d.get("fit")), key=f"fi_{i}")
-                
-                d["comments"] = st.text_area("コメント", d.get("comments", ""), key=f"cm_{i}")
+        # 🖼️ 画像プレビューエリア（コンパクト化）
+        with st.container(border=True):
+            st.markdown("**🖼️ 元画像の確認 (プレビュー)**")
+            file_names = [f"画像No.{i+1} : {f.name}" for i, f in enumerate(f_list)]
+            selected_file = st.selectbox("確認したい画像を選んでください", file_names, label_visibility="collapsed")
+            selected_idx = file_names.index(selected_file)
+            with st.expander("👀 画像を開く", expanded=False):
+                display_file_preview(f_list[selected_idx])
+
+        # 📊 Excel風データエディタ用のデータ整形
+        formatted_data = []
+        for item in r_list:
+            try: dt = date.fromisoformat(str(item.get("completion_date", ""))[:10])
+            except: dt = date.today()
+            formatted_data.append({
+                "画像No": item.get("_f_idx", 0) + 1,
+                "医院名": item.get("clinic_name", ""),
+                "患者名": item.get("patient_name", ""),
+                "伝票番号": item.get("slip_number", ""),
+                "完成日": dt,
+                "シート種別": item.get("sheet_type", "セパレートレス模型"),
+                "種別": item.get("restoration_type", ""),
+                "材料": item.get("material", ""),
+                "部位": item.get("tooth_position", ""),
+                "コンタクト": safe_int(item.get("contact")),
+                "バイト": safe_int(item.get("bite")),
+                "適合": safe_int(item.get("fit")),
+                "コメント": item.get("comments", ""),
+                "_f_idx": item.get("_f_idx") # 裏側で画像を紐付けるための隠しID
+            })
+        
+        df_edit = pd.DataFrame(formatted_data)
+        
+        # エディタ本体
+        edited_df = st.data_editor(
+            df_edit,
+            column_config={
+                "画像No": st.column_config.NumberColumn("画像No", disabled=True, width="small"),
+                "医院名": st.column_config.TextColumn("🏥 医院名", required=True),
+                "患者名": st.column_config.TextColumn("👤 患者名", required=True),
+                "伝票番号": st.column_config.TextColumn("📝 伝票番号"),
+                "完成日": st.column_config.DateColumn("📅 完成日"),
+                "シート種別": st.column_config.SelectboxColumn("📄 シート種別", options=SHEET_TYPE_LIST),
+                "種別": st.column_config.SelectboxColumn("🦷 種別", options=TYPE_LIST),
+                "材料": st.column_config.SelectboxColumn("💎 材料", options=MATERIAL_LIST),
+                "部位": st.column_config.TextColumn("📍 部位"),
+                "コンタクト": st.column_config.NumberColumn("コンタクト", min_value=1, max_value=5, step=1, width="small"),
+                "バイト": st.column_config.NumberColumn("バイト", min_value=1, max_value=5, step=1, width="small"),
+                "適合": st.column_config.NumberColumn("適合", min_value=1, max_value=5, step=1, width="small"),
+                "コメント": st.column_config.TextColumn("💬 コメント"),
+                "_f_idx": None, # 画面には表示しない
+            },
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            height=400
+        )
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("💾 確認したデータを全て保存", type="primary", use_container_width=True):
-            if any(not d.get("clinic_name") or not d.get("patient_name") for d in r_list):
-                st.error("⚠️ 未入力の「医院名」または「患者名」があります。")
+        
+        # 💾 一括保存（バルクインサート処理）
+        if st.button("💾 確認したデータを全て一括保存", type="primary", use_container_width=True):
+            if edited_df["医院名"].isnull().any() or (edited_df["医院名"].astype(str).str.strip() == "").any() or \
+               edited_df["患者名"].isnull().any() or (edited_df["患者名"].astype(str).str.strip() == "").any():
+                st.error("⚠️ 未入力の「医院名」または「患者名」があります。表を確認してください。")
             elif db:
-                with st.spinner("安全にデータベースへ保存中..."):
-                    for i, d in enumerate(r_list):
-                        f_idx = d.get("_f_idx")
-                        f_obj = f_list[f_idx] if (f_idx is not None and f_idx < len(f_list)) else None
-                        save_evaluation_data(d, f_obj, i)
+                with st.spinner("データベースへ一括保存中... (超高速化)"):
+                    insert_data = []
+                    for idx, row in edited_df.iterrows():
+                        f_idx = row.get("_f_idx")
+                        file_obj = f_list[int(f_idx)] if pd.notna(f_idx) and int(f_idx) < len(f_list) else None
+                        img_url = upload_file_to_storage(file_obj, idx)
+                        
+                        insert_data.append({
+                            "clinic_name": str(row.get("医院名", "")),
+                            "patient_name": str(row.get("患者名", "")),
+                            "slip_number": str(row.get("伝票番号", "")),
+                            "completion_date": row.get("完成日").isoformat() if pd.notna(row.get("完成日")) else date.today().isoformat(),
+                            "sheet_type": str(row.get("シート種別", "セパレートレス模型")),
+                            "restoration_type": str(row.get("種別", "")),
+                            "material": str(row.get("材料", "")),
+                            "tooth_position": str(row.get("部位", "")),
+                            "contact": safe_int(row.get("コンタクト")),
+                            "bite": safe_int(row.get("バイト")),
+                            "fit": safe_int(row.get("適合")),
+                            "comments": str(row.get("コメント", "")),
+                            "image_url": img_url
+                        })
+                    
+                    if insert_data:
+                        db.table("evaluations").insert(insert_data).execute()
+                        
                 del st.session_state["r_list"], st.session_state["f_list"]
-                st.success("🎉 データの保存が完了しました！")
+                st.success("🎉 データの一括保存が完了しました！")
                 time.sleep(1.5)
                 st.rerun()
 
@@ -289,7 +337,7 @@ with tab2:
                 m_patient = st.text_input("👤 患者名 (必須)", key="m_p")
                 m_slip = st.text_input("📝 伝票番号", key="m_s")
                 m_date = st.date_input("📅 完成日", value=date.today(), key="m_d")
-                m_stype = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, key="m_st") # ★ 追加
+                m_stype = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, key="m_st")
             with c2:
                 m_type = st.selectbox("🦷 種別", TYPE_LIST, key="m_t")
                 m_material = st.selectbox("💎 材料", MATERIAL_LIST, key="m_m")
@@ -303,7 +351,7 @@ with tab2:
                 if not m_clinic or not m_patient:
                     st.error("⚠️ 医院名と患者名は必須入力です。")
                 elif db:
-                    save_evaluation_data({
+                    save_single_evaluation({
                         "clinic_name": m_clinic, "patient_name": m_patient, "slip_number": m_slip,
                         "completion_date": m_date.isoformat(), "sheet_type": m_stype,
                         "restoration_type": m_type, "material": m_material,
@@ -323,7 +371,6 @@ with tab3:
             df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce')
             
             with st.container(border=True):
-                # ★ 4列に分割して「シート種別」の絞り込みを追加
                 cf1, cf2, cf3, cf4 = st.columns(4)
                 s_c = cf1.selectbox("🏥 医院で絞り込み", ["すべて"] + list(df["clinic_name"].dropna().unique()))
                 s_st = cf2.selectbox("📄 シート種別", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
@@ -366,7 +413,6 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0 and 'material' in f_df.columns:
-                # ★ 初期状態を閉じる設定に変更 (expanded=False)
                 with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=False):
                     cross_df = f_df.groupby(['clinic_name', 'material']).agg(
                         件数=('id', 'count'),
@@ -525,7 +571,6 @@ with tab4:
                             st.success("データを更新しました！画面を再読み込みしてください。")
 
             st.markdown("---")
-            # ★ 新機能: 既存データの一括更新（空欄になっているシート種別をすべて「セパレートレス模型」に埋める）
             with st.expander("🔧 既存データのシート種別を一括更新", expanded=False):
                 st.info("過去に入力したすべてのデータの「シート種別」を、一括で「セパレートレス模型」に更新します。")
                 if st.button("⚠️ 全データの種別を「セパレートレス模型」に更新する"):
