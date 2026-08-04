@@ -658,5 +658,33 @@ with tab4:
                     st.success("削除完了しました！")
                     time.sleep(1)
                     st.rerun()
+
+            st.markdown("---")
+            with st.expander("🚑 万が一のデータ復旧 (CSVから一括インポート)", expanded=False):
+                st.info("過去にダウンロードしたバックアップ用のCSVファイルをアップロードして、データを一括復元します。")
+                restore_file = st.file_uploader("復旧用CSVファイルを選択", type=["csv"], key="restore_csv")
+                
+                if restore_file and st.button("⚠️ CSVからデータを一括復元する", type="primary"):
+                    try:
+                        # CSVを読み込む
+                        df_restore = pd.read_csv(restore_file)
+                        
+                        # 既存のIDと衝突しないよう、ID列が含まれていれば除外して新規登録として扱う
+                        if 'id' in df_restore.columns:
+                            df_restore = df_restore.drop(columns=['id'])
+                            
+                        # データに変換
+                        records = df_restore.to_dict(orient="records")
+                        
+                        with st.spinner("データをデータベースに復元中..."):
+                            # Supabaseに一括インサート
+                            if records:
+                                db.table("evaluations").insert(records).execute()
+                                
+                        st.success(f"🎉 {len(records)} 件のデータを無事に復元しました！画面を再読み込みします。")
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"復元エラー: {e}")
         else:
             st.info("保存されたデータはまだありません。")
