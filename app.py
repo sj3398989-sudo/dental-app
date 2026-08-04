@@ -104,12 +104,9 @@ tab1, tab2, tab3, tab4 = st.tabs([
 MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "メタル", "3Dプリント", "その他"]
 TYPE_LIST = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
 
-# ★追加：エラー回避用の安全な数値変換関数
 def safe_int(val, default=3):
     try:
-        # "3.0"などの文字列や小数を考慮して一旦floatにし、その後intにする
         v = int(float(val))
-        # 万が一1〜5の範囲外の数字が入っていた場合も1〜5に収める
         return max(1, min(5, v))
     except (ValueError, TypeError):
         return default
@@ -230,7 +227,6 @@ with tab1:
                     
                     d["tooth_position"] = st.text_input("部位", d.get("tooth_position", ""), key=f"tp_{i}")
                     
-                    # ★修正：safe_int関数を使って絶対にエラーが起きないように保護
                     d["contact"] = st.slider("コンタクト", 1, 5, safe_int(d.get("contact")), key=f"co_{i}")
                     d["bite"] = st.slider("バイト", 1, 5, safe_int(d.get("bite")), key=f"bi_{i}")
                     d["fit"] = st.slider("適合", 1, 5, safe_int(d.get("fit")), key=f"fi_{i}")
@@ -408,30 +404,23 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            if len(f_df) > 0:
-                html_content = f"""
-                <html>
-                <head><meta charset="utf-8"><title>セパレートレスモデル 品質分析レポート</title></head>
-                <body style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6; padding-bottom: 10px;">セパレートレスモデル 品質分析レポート (大阪センター)</h2>
-                    <p><strong>医院:</strong> {s_c} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>期間:</strong> {s_p} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>材料:</strong> {s_m}</p>
-                    <p><strong>出力日:</strong> {date.today().isoformat()}</p>
-                    <div style="background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
-                        <h3 style="color: #0F172A;">📊 総合評価（評価「3」の割合）</h3>
-                        <ul style="font-size: 16px;">
-                            <li>対象件数: <strong>{len(f_df)} 件</strong></li>
-                            <li>コンタクト適正率: <strong>{c_opt:.1f}%</strong> (平均: {c_m:.2f})</li>
-                            <li>バイト適正率: <strong>{b_opt:.1f}%</strong> (平均: {b_m:.2f})</li>
-                            <li>適合適正率: <strong>{f_opt:.1f}%</strong> (平均: {f_m:.2f})</li>
-                        </ul>
-                        <p style="font-size: 12px; color: #666;">※評価基準: 1(弱い) ～ 3(適正) ～ 5(強い)</p>
-                    </div>
-                </body>
-                </html>
-                """
-                b64 = base64.b64encode(html_content.encode('utf-8')).decode()
-                href = f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #10B981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">📥 医院向けレポートを出力 (HTML)</a>'
-                st.markdown(href, unsafe_allow_html=True)
+            # ★ AI詳細分析ボタンをスコアカードの直後に移動
+            if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
+                with st.spinner("AIがデータを分析中..."):
+                    c = genai.Client(api_key=KEY)
+                    cols = ['completion_date', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
+                    dic = f_df[[co for co in cols if co in f_df.columns]].to_dict(orient='records')
+                    
+                    prm = (
+                        f"条件（医院:{s_c}, 期間:{s_p}, 材料:{s_m}）の補綴物データの傾向を分析してください。\n"
+                        "【重要な前提条件】\n"
+                        "評価スコア（1〜5）は「高いほど良い」わけではありません。\n"
+                        "「3が適正（ピッタリ）」であり、1に近づくほど「弱い・ゆるい」、5に近づくほど「強い・きつい」を意味します。\n"
+                        "この前提を踏まえた上で、材料や設計による特徴・改善点を考察してください:\n"
+                        f"{dic}"
+                    )
+                    r_ai = c.models.generate_content(model='gemini-3.5-flash', contents=prm)
+                    st.info(r_ai.text)
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
@@ -457,7 +446,8 @@ with tab3:
                             counts = f_df[col].value_counts().reindex([1,2,3,4,5], fill_value=0)
                             for score, count in counts.items():
                                 pct = (count / total_cnt * 100) if total_cnt > 0 else 0
-                                txt = f"{pct:.1f}%" if count > 0 else ""
+                                # ★ パーセント表示の文字を太字（<b>タグ）にして目立たせる
+                                txt = f"<b>{pct:.1f}%</b>" if count > 0 else ""
                                 dist_data.append({
                                     '評価項目': name_map[col], 
                                     'スコア': str(score), 
@@ -471,29 +461,41 @@ with tab3:
                             dist_df, x='評価項目', y='件数', color='スコア', 
                             color_discrete_map=color_map, barmode='stack', text='割合'
                         )
-                        fig_dist.update_traces(textposition='inside', textfont_size=14)
+                        # ★ 文字サイズを14から16に拡大
+                        fig_dist.update_traces(textposition='inside', textfont_size=16)
                         fig_dist.update_layout(
                             xaxis=dict(tickfont=dict(size=18, color="#3B82F6", weight="bold"), title=""),
                             yaxis=dict(title="件数")
                         )
                         st.plotly_chart(fig_dist, use_container_width=True)
 
-            if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
-                with st.spinner("AIがデータを分析中..."):
-                    c = genai.Client(api_key=KEY)
-                    cols = ['completion_date', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
-                    dic = f_df[[co for co in cols if co in f_df.columns]].to_dict(orient='records')
-                    
-                    prm = (
-                        f"条件（医院:{s_c}, 期間:{s_p}, 材料:{s_m}）の補綴物データの傾向を分析してください。\n"
-                        "【重要な前提条件】\n"
-                        "評価スコア（1〜5）は「高いほど良い」わけではありません。\n"
-                        "「3が適正（ピッタリ）」であり、1に近づくほど「弱い・ゆるい」、5に近づくほど「強い・きつい」を意味します。\n"
-                        "この前提を踏まえた上で、材料や設計による特徴・改善点を考察してください:\n"
-                        f"{dic}"
-                    )
-                    r_ai = c.models.generate_content(model='gemini-3.5-flash', contents=prm)
-                    st.info(r_ai.text)
+            st.markdown("<br>", unsafe_allow_html=True)
+            # ★ 医院向けレポートを一番下に移動
+            if len(f_df) > 0:
+                html_content = f"""
+                <html>
+                <head><meta charset="utf-8"><title>セパレートレスモデル 品質分析レポート</title></head>
+                <body style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6; padding-bottom: 10px;">セパレートレスモデル 品質分析レポート (大阪センター)</h2>
+                    <p><strong>医院:</strong> {s_c} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>期間:</strong> {s_p} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>材料:</strong> {s_m}</p>
+                    <p><strong>出力日:</strong> {date.today().isoformat()}</p>
+                    <div style="background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
+                        <h3 style="color: #0F172A;">📊 総合評価（評価「3」の割合）</h3>
+                        <ul style="font-size: 16px;">
+                            <li>対象件数: <strong>{len(f_df)} 件</strong></li>
+                            <li>コンタクト適正率: <strong>{c_opt:.1f}%</strong> (平均: {c_m:.2f})</li>
+                            <li>バイト適正率: <strong>{b_opt:.1f}%</strong> (平均: {b_m:.2f})</li>
+                            <li>適合適正率: <strong>{f_opt:.1f}%</strong> (平均: {f_m:.2f})</li>
+                        </ul>
+                        <p style="font-size: 12px; color: #666;">※評価基準: 1(弱い) ～ 3(適正) ～ 5(強い)</p>
+                    </div>
+                </body>
+                </html>
+                """
+                b64 = base64.b64encode(html_content.encode('utf-8')).decode()
+                href = f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #10B981, #059669); color: white; text-decoration: none; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">📥 医院向けレポートを出力 (HTML)</a>'
+                st.markdown(href, unsafe_allow_html=True)
+
 
 with tab4:
     st.markdown("### 📋 保存済みデータの管理")
@@ -567,7 +569,6 @@ with tab4:
                             
                             e_pos = st.text_input("部位", value=str(target_row.get('tooth_position') or ""))
                             
-                            # ★履歴の編集画面にも安全な数値変換を適用
                             e_con = st.slider("コンタクト", 1, 5, safe_int(target_row.get('contact')))
                             e_bit = st.slider("バイト", 1, 5, safe_int(target_row.get('bite')))
                             e_fit = st.slider("適合", 1, 5, safe_int(target_row.get('fit')))
@@ -594,8 +595,43 @@ with tab4:
                                 st.error(f"更新エラー: {e}")
 
             st.markdown("---")
+            # ★ 追加：1年経過した古い画像データを削除する機能
+            with st.expander("🧹 1年経過した古い画像を削除（文字データは残す・容量節約）", expanded=False):
+                st.info("データベースの容量を節約するため、完成日から1年以上経過した古い「画像ファイルのみ」を削除します。分析用の文字データは永久に保存されます。")
+                
+                if 'completion_date' in df.columns:
+                    df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce')
+                    one_year_ago = pd.Timestamp.today() - pd.DateOffset(years=1)
+                    # 1年以上前で、かつimage_urlが存在するデータを抽出
+                    old_df = df[(df['completion_date'] < one_year_ago) & (df['image_url'].notna())]
+                    
+                    st.write(f"削除対象の画像データ: **{len(old_df)} 件**")
+                    
+                    if len(old_df) > 0:
+                        if st.button("⚠️ 対象の画像を削除する"):
+                            with st.spinner("古い画像を削除中..."):
+                                try:
+                                    del_cnt = 0
+                                    for _, row in old_df.iterrows():
+                                        img_url = row['image_url']
+                                        if img_url:
+                                            # URLからファイル名を抽出してストレージから削除
+                                            file_name = img_url.split('/')[-1]
+                                            db.storage.from_("sheet_images").remove([file_name])
+                                            # DBのimage_urlを空にする
+                                            db.table("evaluations").update({"image_url": None}).eq("id", row['id']).execute()
+                                            del_cnt += 1
+                                    st.success(f"🎉 {del_cnt} 件の画像データを削除し、容量を確保しました！")
+                                    time.sleep(1.5)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"削除エラー: {e}")
+                else:
+                    st.write("対象データはありません。")
+            
+            st.markdown("---")
             with st.expander("🗑️ データの一括削除（取り扱い注意）", expanded=False):
-                st.warning("削除したいデータにチェックを入れてください。一度削除すると元に戻せません。")
+                st.warning("チェックを入れたデータを完全に削除します（文字データも消えます）。一度削除すると元に戻せません。")
                 selected_ids = []
                 for _, row in df.iterrows():
                     chk_label = f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様"
