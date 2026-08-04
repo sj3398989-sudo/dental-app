@@ -12,7 +12,6 @@ from datetime import date
 import base64
 
 # --- 1. ページ全体の初期設定 ---
-# タブの名前（ブラウザのタブに表示される名前）
 st.set_page_config(
     page_title="AI分析 Pro (大阪センター)",
     page_icon="🦷",
@@ -20,20 +19,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. スタイリッシュ化のためのカスタムCSS ---
+# --- 2. スマホ対応・スタイリッシュCSS ---
 st.markdown("""
 <style>
-    /* Streamlit標準のメニューとフッターを隠す */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* アプリ全体の背景色をほんのり明るいグレーに */
     .stApp {
         background-color: #F8F9FA;
     }
     
-    /* タイトルの装飾（スマホでも綺麗に収まる可変サイズ） */
     .custom-title {
         font-size: clamp(1.3rem, 5vw, 2.0rem);
         font-weight: 800;
@@ -50,7 +46,6 @@ st.markdown("""
         margin-bottom: 25px;
     }
     
-    /* プライマリボタン（主要アクション）のモダン化 */
     .stButton>button[kind="primary"] {
         background: linear-gradient(135deg, #3B82F6, #14B8A6);
         color: white;
@@ -66,7 +61,6 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* エクスパンダー（折りたたみ）をカード風に */
     .streamlit-expanderHeader {
         border-radius: 8px;
         border: 1px solid #E2E8F0;
@@ -74,7 +68,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- カスタムヘッダー（新しいアプリ名） ---
+# --- カスタムヘッダー ---
 st.markdown('<div class="custom-title">🦷 セパレートレスモデル評価 AI分析<br><span style="font-size: 0.7em; color: #64748B;">(大阪センター)</span></div>', unsafe_allow_html=True)
 st.markdown('<div class="title-underline"></div>', unsafe_allow_html=True)
 
@@ -343,17 +337,14 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # 平均の計算
             c_m = f_df['contact'].mean() if len(f_df) > 0 else 0
             b_m = f_df['bite'].mean() if len(f_df) > 0 else 0
             f_m = f_df['fit'].mean() if len(f_df) > 0 else 0
 
-            # 適正率（スコアが3の割合）の計算
             c_opt = (f_df['contact'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
             b_opt = (f_df['bite'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
             f_opt = (f_df['fit'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
             
-            # ★メイン指標を「適正率」に変更したスコアカード
             def render_metric(label, mean_val, opt_rate):
                 if mean_val == 0:
                     color = "#9e9e9e"
@@ -361,7 +352,6 @@ with tab3:
                     opt_str = "- %"
                 else:
                     diff = mean_val - 3.0
-                    # 適正率が80%以上なら緑、それ未満なら注意(オレンジ〜赤)
                     color = "#10B981" if opt_rate >= 80 else ("#F59E0B" if opt_rate >= 50 else "#EF4444")
                     mean_str = f"{mean_val:.2f} (誤差 {diff:+.2f})"
                     opt_str = f"{opt_rate:.1f}%"
@@ -429,16 +419,40 @@ with tab3:
                 
             with col_chart2:
                 with st.container(border=True):
-                    st.markdown("**📊 スコア分布（歩留まりの確認）**")
+                    # ★ タイトルを変更
+                    st.markdown("**📊 スコア分布**")
                     if len(f_df) > 0:
                         dist_data = []
+                        total_cnt = len(f_df)
+                        # ★ 項目名を日本語に変更
+                        name_map = {'contact': 'コンタクト', 'bite': 'バイト', 'fit': '適合'}
+                        
                         for col in ['contact', 'bite', 'fit']:
                             counts = f_df[col].value_counts().reindex([1,2,3,4,5], fill_value=0)
                             for score, count in counts.items():
-                                dist_data.append({'評価項目': col, 'スコア': str(score), '件数': count})
+                                # ★ 各スコアのパーセンテージを計算
+                                pct = (count / total_cnt * 100) if total_cnt > 0 else 0
+                                txt = f"{pct:.1f}%" if count > 0 else ""
+                                dist_data.append({
+                                    '評価項目': name_map[col], 
+                                    'スコア': str(score), 
+                                    '件数': count,
+                                    '割合': txt
+                                })
                         dist_df = pd.DataFrame(dist_data)
                         color_map = {'1': '#93C5FD', '2': '#BFDBFE', '3': '#10B981', '4': '#FDBA74', '5': '#F97316'}
-                        fig_dist = px.bar(dist_df, x='評価項目', y='件数', color='スコア', color_discrete_map=color_map, barmode='stack')
+                        
+                        # ★ 割合テキストをグラフ上に表示
+                        fig_dist = px.bar(
+                            dist_df, x='評価項目', y='件数', color='スコア', 
+                            color_discrete_map=color_map, barmode='stack', text='割合'
+                        )
+                        # 文字サイズやX軸のラベル（コンタクト等）を太く大きくする
+                        fig_dist.update_traces(textposition='inside', textfont_size=14)
+                        fig_dist.update_layout(
+                            xaxis=dict(tickfont=dict(size=18, color="#1E3A8A", weight="bold"), title=""),
+                            yaxis=dict(title="件数")
+                        )
                         st.plotly_chart(fig_dist, use_container_width=True)
 
             if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
