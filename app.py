@@ -26,6 +26,10 @@ st.markdown("""
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
+    .stApp {
+        background-color: #F8F9FA;
+    }
+    
     .custom-title {
         font-size: clamp(1.3rem, 5vw, 2.0rem);
         font-weight: 800;
@@ -141,7 +145,6 @@ with tab1:
                             
                         for item in parsed:
                             item["_fn"] = f.name
-                            # ★修正ポイント1：ファイル名ではなく「何番目の画像か」を記録する
                             item["_f_idx"] = idx 
                             r_list.append(item)
                     except Exception as e:
@@ -161,25 +164,29 @@ with tab1:
             c_name = d.get("clinic_name", "医院名未入力")
             
             with st.expander(f"👤 データ #{i+1} : {p_name} 様  |  🏥 {c_name}", expanded=False):
-                # ★修正ポイント2：記録した「順番（インデックス）」で画像を取り出す
                 f_idx = d.get("_f_idx")
                 matching_file = f_list[f_idx] if (f_idx is not None and f_idx < len(f_list)) else None
                 
                 col_img, col_form1, col_form2 = st.columns([2, 2, 2], gap="medium")
                 
                 with col_img:
-                    st.markdown("**🖼️ 元画像プレビュー**")
+                    st.markdown("**🖼️ 元画像/PDFプレビュー**")
                     if matching_file:
                         if "pdf" in matching_file.type:
-                            st.info("📄 PDFファイルです")
+                            # ★PDFをBase64に変換してiframeで表示
+                            try:
+                                b64_pdf = base64.b64encode(matching_file.getvalue()).decode('utf-8')
+                                pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="450" type="application/pdf" style="border: 1px solid #ccc; border-radius: 8px;"></iframe>'
+                                st.markdown(pdf_display, unsafe_allow_html=True)
+                            except Exception as e:
+                                st.warning("PDFを表示できません")
                         else:
                             try:
-                                # getvalue()を使うことで表示エラーを回避
                                 st.image(matching_file.getvalue(), use_container_width=True)
                             except:
                                 st.warning("画像を表示できません")
                     else:
-                        st.write("画像がありません")
+                        st.write("ファイルがありません")
                 
                 with col_form1:
                     d["clinic_name"] = st.text_input("医院名 (必須)", d.get("clinic_name", ""), key=f"c_{i}")
@@ -225,7 +232,6 @@ with tab1:
                     with st.spinner("安全にデータベースへ保存中..."):
                         for i, d in enumerate(r_list):
                             img_url = None
-                            # ★修正ポイント3：保存時にも正確な順番で画像を引っ張ってくる
                             f_idx = d.get("_f_idx")
                             if f_idx is not None and f_idx < len(f_list):
                                 f_obj = f_list[f_idx]
@@ -510,8 +516,13 @@ with tab4:
                 target_row = edit_map[selected_edit_label]
                 
                 with st.container(border=True):
-                    if target_row.get('image_url'):
-                        st.image(target_row['image_url'], width=300, caption="評価シート画像")
+                    # ★ 保存済みデータがPDFだった場合のプレビュー対応
+                    img_url = target_row.get('image_url')
+                    if img_url:
+                        if ".pdf" in img_url.lower():
+                            st.markdown(f'<iframe src="{img_url}" width="100%" height="450" style="border: 1px solid #ccc; border-radius: 8px;"></iframe>', unsafe_allow_html=True)
+                        else:
+                            st.image(img_url, use_container_width=True, caption="評価シート画像")
                         
                     with st.form("edit_form"):
                         col_e1, col_e2 = st.columns(2)
