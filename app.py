@@ -176,7 +176,7 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録 (Excel風エディタ ＆ バルクインサート版)
+# Tab 1: AI一括登録 (精度優先 ➔ 高容量切り替え版)
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -209,13 +209,28 @@ with tab1:
                         img = ImageOps.exif_transpose(img)
                         img = ImageEnhance.Contrast(img).enhance(1.2)
                         cp = img
-                        
-                    res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
-                    parsed = json.loads(res.text.strip())
-                    if isinstance(parsed, dict): parsed = [parsed]
-                    for item in parsed:
-                        item["_f_idx"] = idx 
-                        r_list.append(item)
+                    
+                    # ★ 精度優先のフォールバック設計（最高精度 3.5 Flash ➔ 上限500回の 3.5 Flash Lite ➔ 2.5 Flash）
+                    res = None
+                    try:
+                        # 第1優先: 最高精度の Gemini 3.5 Flash
+                        res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
+                    except Exception as e_3_5:
+                        try:
+                            # 第2優先: 上限500回の Gemini 3.5 Flash Lite
+                            res = c.models.generate_content(model='gemini-3.5-flash-lite', contents=[cp, prm], config=ai_config)
+                            st.toast(f"ファイル {f.name}: Gemini 3.5 Flash Lite で自動代替解析しました", icon="ℹ️")
+                        except Exception as e_3_5_lite:
+                            # 最終バックアップ: Gemini 2.5 Flash
+                            res = c.models.generate_content(model='gemini-2.5-flash', contents=[cp, prm], config=ai_config)
+                            st.toast(f"ファイル {f.name}: Gemini 2.5 Flash で自動代替解析しました", icon="ℹ️")
+
+                    if res and res.text:
+                        parsed = json.loads(res.text.strip())
+                        if isinstance(parsed, dict): parsed = [parsed]
+                        for item in parsed:
+                            item["_f_idx"] = idx 
+                            r_list.append(item)
                 except Exception as e:
                     st.error(f"ファイル解析エラー ({f.name}): {e}")
             
@@ -228,7 +243,6 @@ with tab1:
         st.markdown('<div class="shortcut-guide">⌨️ Excelのように表を直接クリックして修正できます。<b>Tab</b>キーで右へサクサク移動可能です。</div>', unsafe_allow_html=True)
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
-        # 🖼️ 画像プレビューエリア（コンパクト化）
         with st.container(border=True):
             st.markdown("**🖼️ 元画像の確認 (プレビュー)**")
             file_names = [f"画像No.{i+1} : {f.name}" for i, f in enumerate(f_list)]
@@ -237,7 +251,6 @@ with tab1:
             with st.expander("👀 画像を開く", expanded=False):
                 display_file_preview(f_list[selected_idx])
 
-        # 📊 Excel風データエディタ用のデータ整形
         formatted_data = []
         for item in r_list:
             try: dt = date.fromisoformat(str(item.get("completion_date", ""))[:10])
@@ -256,12 +269,11 @@ with tab1:
                 "バイト": safe_int(item.get("bite")),
                 "適合": safe_int(item.get("fit")),
                 "コメント": item.get("comments", ""),
-                "_f_idx": item.get("_f_idx") # 裏側で画像を紐付けるための隠しID
+                "_f_idx": item.get("_f_idx")
             })
         
         df_edit = pd.DataFrame(formatted_data)
         
-        # エディタ本体
         edited_df = st.data_editor(
             df_edit,
             column_config={
@@ -278,7 +290,7 @@ with tab1:
                 "バイト": st.column_config.NumberColumn("バイト", min_value=1, max_value=5, step=1, width="small"),
                 "適合": st.column_config.NumberColumn("適合", min_value=1, max_value=5, step=1, width="small"),
                 "コメント": st.column_config.TextColumn("💬 コメント"),
-                "_f_idx": None, # 画面には表示しない
+                "_f_idx": None,
             },
             use_container_width=True,
             hide_index=True,
@@ -288,7 +300,6 @@ with tab1:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # 💾 一括保存（バルクインサート処理）
         if st.button("💾 確認したデータを全て一括保存", type="primary", use_container_width=True):
             if edited_df["医院名"].isnull().any() or (edited_df["医院名"].astype(str).str.strip() == "").any() or \
                edited_df["患者名"].isnull().any() or (edited_df["患者名"].astype(str).str.strip() == "").any():
@@ -454,7 +465,16 @@ with tab3:
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                     dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
                     prm = f"条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
-                    st.info(genai.Client(api_key=KEY).models.generate_content(model='gemini-3.5-flash', contents=prm).text)
+                    
+                    res_ai = None
+                    try:
+                        res_ai = genai.Client(api_key=KEY).models.generate_content(model='gemini-3.5-flash', contents=prm).text
+                    except Exception:
+                        try:
+                            res_ai = genai.Client(api_key=KEY).models.generate_content(model='gemini-3.5-flash-lite', contents=prm).text
+                        except Exception:
+                            res_ai = genai.Client(api_key=KEY).models.generate_content(model='gemini-2.5-flash', contents=prm).text
+                    st.info(res_ai)
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
