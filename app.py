@@ -19,24 +19,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. スマホ対応・スタイリッシュCSS（白飛び対策済み） ---
+# --- 2. スマホ対応・スタイリッシュCSS ---
 st.markdown("""
 <style>
-    /* Streamlit標準のメニューとフッターを隠す */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* 
-       ※背景色の強制指定を削除しました。
-       これにより、スマホのライト/ダークモードに合わせて文字色が自動調整され、白飛びしなくなります。
-    */
-    
-    /* タイトルの装飾（スマホでも綺麗に収まる可変サイズ） */
     .custom-title {
         font-size: clamp(1.3rem, 5vw, 2.0rem);
         font-weight: 800;
-        color: #3B82F6;
+        color: #1E3A8A;
         margin-bottom: 5px;
         line-height: 1.3;
     }
@@ -49,7 +42,6 @@ st.markdown("""
         margin-bottom: 25px;
     }
     
-    /* プライマリボタン（主要アクション）のモダン化 */
     .stButton>button[kind="primary"] {
         background: linear-gradient(135deg, #3B82F6, #14B8A6);
         color: white;
@@ -65,7 +57,6 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* エクスパンダー（折りたたみ）をカード風に */
     .streamlit-expanderHeader {
         border-radius: 8px;
         border: 1px solid #E2E8F0;
@@ -150,6 +141,8 @@ with tab1:
                             
                         for item in parsed:
                             item["_fn"] = f.name
+                            # ★修正ポイント1：ファイル名ではなく「何番目の画像か」を記録する
+                            item["_f_idx"] = idx 
                             r_list.append(item)
                     except Exception as e:
                         st.error(f"{f.name} エラー: {e}")
@@ -168,23 +161,26 @@ with tab1:
             c_name = d.get("clinic_name", "医院名未入力")
             
             with st.expander(f"👤 データ #{i+1} : {p_name} 様  |  🏥 {c_name}", expanded=False):
-                matching_file = next((f for f in f_list if f.name == d.get("_fn")), None)
+                # ★修正ポイント2：記録した「順番（インデックス）」で画像を取り出す
+                f_idx = d.get("_f_idx")
+                matching_file = f_list[f_idx] if (f_idx is not None and f_idx < len(f_list)) else None
                 
-                st.markdown("**🖼️ 元画像プレビュー**")
-                if matching_file:
-                    if "pdf" in matching_file.type:
-                        st.info("PDFファイルです")
+                col_img, col_form1, col_form2 = st.columns([2, 2, 2], gap="medium")
+                
+                with col_img:
+                    st.markdown("**🖼️ 元画像プレビュー**")
+                    if matching_file:
+                        if "pdf" in matching_file.type:
+                            st.info("📄 PDFファイルです")
+                        else:
+                            try:
+                                # getvalue()を使うことで表示エラーを回避
+                                st.image(matching_file.getvalue(), use_container_width=True)
+                            except:
+                                st.warning("画像を表示できません")
                     else:
-                        try:
-                            st.image(matching_file, use_column_width=True, output_format="JPEG")
-                        except:
-                            st.warning("画像を表示できません")
-                else:
-                    st.write("画像がありません")
+                        st.write("画像がありません")
                 
-                st.divider()
-
-                col_form1, col_form2 = st.columns(2)
                 with col_form1:
                     d["clinic_name"] = st.text_input("医院名 (必須)", d.get("clinic_name", ""), key=f"c_{i}")
                     d["patient_name"] = st.text_input("患者名 (必須)", d.get("patient_name", ""), key=f"p_{i}")
@@ -229,8 +225,10 @@ with tab1:
                     with st.spinner("安全にデータベースへ保存中..."):
                         for i, d in enumerate(r_list):
                             img_url = None
-                            if len(f_list) > 0:
-                                f_obj = f_list[0]
+                            # ★修正ポイント3：保存時にも正確な順番で画像を引っ張ってくる
+                            f_idx = d.get("_f_idx")
+                            if f_idx is not None and f_idx < len(f_list):
+                                f_obj = f_list[f_idx]
                                 f_b = f_obj.getvalue()
                                 f_t = f_obj.type
                                 pdf = "pdf" in f_t
@@ -362,19 +360,19 @@ with tab3:
                     opt_str = f"{opt_rate:.1f}%"
                 
                 return f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
-                    <p style="margin: 0; font-size: 14px; font-weight: bold;">{label} (適正率)</p>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">{label} (適正率)</p>
                     <h2 style="margin: 10px 0; color: {color}; font-size: 32px; font-weight: 800;">{opt_str}</h2>
-                    <p style="margin: 0; font-size: 13px;">平均点: {mean_str}</p>
+                    <p style="margin: 0; font-size: 13px; color: #64748B;">平均点: {mean_str}</p>
                 </div>
                 """
 
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
-                    <p style="margin: 0; font-size: 14px; font-weight: bold;">📄 対象件数</p>
-                    <h2 style="margin: 10px 0; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">📄 対象件数</p>
+                    <h2 style="margin: 10px 0; color: #0F172A; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
                     <p style="margin: 0; font-size: 13px; color: transparent;">-</p>
                 </div>
                 """, unsafe_allow_html=True)
