@@ -456,11 +456,13 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
+                        if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
                 with st.spinner("AIがデータを分析中..."):
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                     dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
-                    prm = f"条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
+                    
+                    # ★ 修正ポイント：Pythonで正確に数えた件数「len(f_df)」をAIへの指示に埋め込む
+                    prm = f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
                     
                     res_ai = None
                     c = genai.Client(api_key=KEY)
@@ -472,6 +474,7 @@ with tab3:
                         except Exception:
                             res_ai = c.models.generate_content(model='gemini-2.5-flash', contents=prm).text
                     st.info(res_ai)
+
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
