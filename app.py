@@ -19,23 +19,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. スマホ対応・完全最適化CSS（白飛び・ダークモード対策済み） ---
+# --- 2. スマホ対応・完全最適化CSS ---
 st.markdown("""
 <style>
-    /* メニューとフッターの非表示 */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* 
-       ★背景色・文字色の完全自動化（Streamlitの標準テーマに任せる）
-       これにより、スマホのライト/ダークモードに完璧に連動し、白飛びが起きなくなります。
-    */
     .stApp {
         background-color: transparent !important;
     }
     
-    /* タイトル文字（ダークモードでも見えるようにブルーを指定） */
     .custom-title {
         font-size: clamp(1.3rem, 5vw, 2.0rem);
         font-weight: 800;
@@ -52,7 +46,6 @@ st.markdown("""
         margin-bottom: 25px;
     }
     
-    /* グラデーションボタン */
     .stButton>button[kind="primary"] {
         background: linear-gradient(135deg, #3B82F6, #14B8A6);
         color: white;
@@ -68,18 +61,16 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* エクスパンダーとコンテナの枠線設定（ライト/ダーク両対応） */
     .streamlit-expanderHeader {
         border-radius: 8px;
         border: 1px solid rgba(128, 128, 128, 0.2);
     }
     
-    /* スコアカードなどのカスタムHTML部分をダークモードに対応させる */
     .metric-card {
         padding: 15px; 
         border-radius: 8px; 
         border: 1px solid rgba(128, 128, 128, 0.2);
-        background-color: transparent; /* 背景を透明にしてモードに合わせる */
+        background-color: transparent; 
         text-align: center; 
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
@@ -112,6 +103,16 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "メタル", "3Dプリント", "その他"]
 TYPE_LIST = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
+
+# ★追加：エラー回避用の安全な数値変換関数
+def safe_int(val, default=3):
+    try:
+        # "3.0"などの文字列や小数を考慮して一旦floatにし、その後intにする
+        v = int(float(val))
+        # 万が一1〜5の範囲外の数字が入っていた場合も1〜5に収める
+        return max(1, min(5, v))
+    except (ValueError, TypeError):
+        return default
 
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -229,9 +230,10 @@ with tab1:
                     
                     d["tooth_position"] = st.text_input("部位", d.get("tooth_position", ""), key=f"tp_{i}")
                     
-                    d["contact"] = st.slider("コンタクト", 1, 5, int(d.get("contact", 3) or 3), key=f"co_{i}")
-                    d["bite"] = st.slider("バイト", 1, 5, int(d.get("bite", 3) or 3), key=f"bi_{i}")
-                    d["fit"] = st.slider("適合", 1, 5, int(d.get("fit", 3) or 3), key=f"fi_{i}")
+                    # ★修正：safe_int関数を使って絶対にエラーが起きないように保護
+                    d["contact"] = st.slider("コンタクト", 1, 5, safe_int(d.get("contact")), key=f"co_{i}")
+                    d["bite"] = st.slider("バイト", 1, 5, safe_int(d.get("bite")), key=f"bi_{i}")
+                    d["fit"] = st.slider("適合", 1, 5, safe_int(d.get("fit")), key=f"fi_{i}")
                 
                 d["comments"] = st.text_area("コメント", d.get("comments", ""), key=f"cm_{i}")
 
@@ -371,7 +373,6 @@ with tab3:
             b_opt = (f_df['bite'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
             f_opt = (f_df['fit'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
             
-            # ★ CSSで文字色を自動化（スタイルから color: #64748B 等を削除）
             def render_metric(label, mean_val, opt_rate):
                 if mean_val == 0:
                     score_color = "inherit"
@@ -565,9 +566,11 @@ with tab4:
                             e_material = st.selectbox("材料", MATERIAL_LIST, index=e_idx_m)
                             
                             e_pos = st.text_input("部位", value=str(target_row.get('tooth_position') or ""))
-                            e_con = st.slider("コンタクト", 1, 5, int(target_row.get('contact') or 3))
-                            e_bit = st.slider("バイト", 1, 5, int(target_row.get('bite') or 3))
-                            e_fit = st.slider("適合", 1, 5, int(target_row.get('fit') or 3))
+                            
+                            # ★履歴の編集画面にも安全な数値変換を適用
+                            e_con = st.slider("コンタクト", 1, 5, safe_int(target_row.get('contact')))
+                            e_bit = st.slider("バイト", 1, 5, safe_int(target_row.get('bite')))
+                            e_fit = st.slider("適合", 1, 5, safe_int(target_row.get('fit')))
                         
                         e_com = st.text_area("コメント", value=str(target_row.get('comments') or ""))
                         
