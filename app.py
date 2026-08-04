@@ -176,7 +176,7 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録
+# Tab 1: AI一括登録 (精度優先 ➔ 高容量切り替え版)
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -210,6 +210,7 @@ with tab1:
                         img = ImageEnhance.Contrast(img).enhance(1.2)
                         cp = img
                     
+                    # ★ 精度優先のフォールバック設計（最高精度 3.5 Flash ➔ 上限500回の 3.5 Flash Lite ➔ 2.5 Flash）
                     res = None
                     try:
                         res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
@@ -456,12 +457,12 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-                        if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
+            if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
                 with st.spinner("AIがデータを分析中..."):
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                     dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
                     
-                    # ★ 修正ポイント：Pythonで正確に数えた件数「len(f_df)」をAIへの指示に埋め込む
+                    # ★ 修正ポイント：Pythonで正確に数えた件数を明記してAIの勘違いを防ぐ
                     prm = f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
                     
                     res_ai = None
@@ -474,7 +475,6 @@ with tab3:
                         except Exception:
                             res_ai = c.models.generate_content(model='gemini-2.5-flash', contents=prm).text
                     st.info(res_ai)
-
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
