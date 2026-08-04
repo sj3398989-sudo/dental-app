@@ -4,7 +4,7 @@ import plotly.express as px
 from google import genai
 from google.genai import types
 from supabase import create_client
-from PIL import Image
+from PIL import Image, ImageOps, ImageEnhance
 import json
 import io
 import time
@@ -84,14 +84,12 @@ MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "メタル", "3Dプ�
 TYPE_LIST = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
 
 def safe_int(val, default=3):
-    """AIの出力ブレを吸収し、確実に1〜5の整数に変換する安全装置"""
     try:
         return max(1, min(5, int(float(val))))
     except (ValueError, TypeError):
         return default
 
 def save_evaluation_data(d, file_obj=None, idx=0):
-    """データベース保存処理の共通化モジュール"""
     img_url = None
     if file_obj and db:
         f_b = file_obj.getvalue()
@@ -120,7 +118,6 @@ def save_evaluation_data(d, file_obj=None, idx=0):
     }).execute()
 
 def display_file_preview(file_obj):
-    """画像およびPDFプレビュー用の共通モジュール"""
     if not file_obj:
         st.write("ファイルがありません")
         return
@@ -143,7 +140,7 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録
+# Tab 1: AI一括登録 (精度強化版)
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -151,23 +148,48 @@ with tab1:
     up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
-        with st.spinner("AIがシートを高速解析中..."):
+        with st.spinner("AIがシートを精密解析中..."):
             c = genai.Client(api_key=KEY)
+            
+            # ★ 抽出ルールを具体化し、情報漏れを防ぐ最強プロンプト
             prm = (
-                "このファイルには1枚または複数の補綴物評価シートが含まれています。\n"
-                "以下のキーを持つJSONオブジェクトの配列（リスト: [...]）形式で抽出してください。\n"
+                "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順とルールに厳密に従ってデータを抽出してください。\n\n"
+                "【抽出ルール】\n"
+                "1. 画像全体をくまなくスキャンし、記載されているテキストやチェックマークを全て正確に読み取ってください。\n"
+                "2. 評価の数値（contact, bite, fit）は1〜5の整数です。丸（〇）で囲まれている数字や、チェック（✓）が入っている数字を優先してください。訂正線がある場合は修正後を採用してください。\n"
+                "3. 部位（tooth_position）は、歯科領域の歯式表記をそのまま残して抽出してください。\n"
+                "4. 読み取れない項目や未記載の項目は推測で補完せず、必ず空文字（\"\"）にしてください。\n\n"
+                "【出力形式】\n"
+                "以下のキーを持つJSONオブジェクトの配列（リスト: [...]）形式で出力してください。\n"
                 "キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
-                "restoration_type, material, tooth_position, contact (1〜5), bite (1〜5), fit (1〜5), comments\n"
-                "必ずJSONの配列形式のみを出力してください。"
+                "restoration_type, material, tooth_position, contact, bite, fit, comments"
             )
+            
+            # ★ AIの創造性を消し、JSON出力のみに固定する設定
+            ai_config = types.GenerateContentConfig(
+                temperature=0.0, 
+                response_mime_type="application/json"
+            )
+            
             r_list = []
             for idx, f in enumerate(up_files):
                 try:
-                    cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf") if "pdf" in f.type else Image.open(io.BytesIO(f.getvalue()))
-                    res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm])
-                    txt = res.text.strip()
-                    if txt.startswith("```"): txt = "\n".join(txt.splitlines()[1:-1])
-                    parsed = json.loads(txt)
+                    if "pdf" in f.type:
+                        cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
+                    else:
+                        # ★ 画像の事前クレンジング（回転補正 ＆ コントラスト強調）
+                        img = Image.open(io.BytesIO(f.getvalue()))
+                        img = ImageOps.exif_transpose(img) # スマホの回転情報を補正
+                        img = ImageEnhance.Contrast(img).enhance(1.2) # コントラストを20%上げて文字をくっきりさせる
+                        cp = img
+                        
+                    res = c.models.generate_content(
+                        model='gemini-3.5-flash', 
+                        contents=[cp, prm], 
+                        config=ai_config
+                    )
+                    
+                    parsed = json.loads(res.text.strip())
                     if isinstance(parsed, dict): parsed = [parsed]
                     for item in parsed:
                         item["_f_idx"] = idx 
@@ -275,7 +297,6 @@ with tab3:
                 s_p = cf2.selectbox("📅 期間で絞り込み", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
                 s_m = cf3.selectbox("💎 材料で絞り込み", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
             
-            # フィルタリング処理
             f_df = df.copy()
             if s_c != "すべて": f_df = f_df[f_df["clinic_name"] == s_c]
             if s_m != "すべて" and "material" in f_df.columns: f_df = f_df[f_df["material"] == s_m]
@@ -285,7 +306,6 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # スコア計算
             def get_stats(col):
                 return (f_df[col].mean(), (f_df[col] == 3).sum() / len(f_df) * 100) if len(f_df) > 0 else (0, 0)
 
@@ -312,7 +332,6 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # AI詳細分析 (スコアカード直後)
             if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
                 with st.spinner("AIがデータを分析中..."):
                     dic = f_df[['completion_date', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']].to_dict(orient='records')
@@ -347,7 +366,6 @@ with tab3:
                         st.plotly_chart(fig_dist, use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
-            # 医院向けレポート (一番下)
             if len(f_df) > 0:
                 html = f"""
                 <html><head><meta charset="utf-8"><title>品質分析レポート</title></head>
