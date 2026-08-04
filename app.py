@@ -19,21 +19,27 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. スマホ対応・スタイリッシュCSS ---
+# --- 2. スマホ対応・完全最適化CSS（白飛び・ダークモード対策済み） ---
 st.markdown("""
 <style>
+    /* メニューとフッターの非表示 */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
+    /* 
+       ★背景色・文字色の完全自動化（Streamlitの標準テーマに任せる）
+       これにより、スマホのライト/ダークモードに完璧に連動し、白飛びが起きなくなります。
+    */
     .stApp {
-        background-color: #F8F9FA;
+        background-color: transparent !important;
     }
     
+    /* タイトル文字（ダークモードでも見えるようにブルーを指定） */
     .custom-title {
         font-size: clamp(1.3rem, 5vw, 2.0rem);
         font-weight: 800;
-        color: #1E3A8A;
+        color: #3B82F6;
         margin-bottom: 5px;
         line-height: 1.3;
     }
@@ -46,6 +52,7 @@ st.markdown("""
         margin-bottom: 25px;
     }
     
+    /* グラデーションボタン */
     .stButton>button[kind="primary"] {
         background: linear-gradient(135deg, #3B82F6, #14B8A6);
         color: white;
@@ -61,9 +68,20 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
+    /* エクスパンダーとコンテナの枠線設定（ライト/ダーク両対応） */
     .streamlit-expanderHeader {
         border-radius: 8px;
-        border: 1px solid #E2E8F0;
+        border: 1px solid rgba(128, 128, 128, 0.2);
+    }
+    
+    /* スコアカードなどのカスタムHTML部分をダークモードに対応させる */
+    .metric-card {
+        padding: 15px; 
+        border-radius: 8px; 
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        background-color: transparent; /* 背景を透明にしてモードに合わせる */
+        text-align: center; 
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -173,12 +191,11 @@ with tab1:
                     st.markdown("**🖼️ 元画像/PDFプレビュー**")
                     if matching_file:
                         if "pdf" in matching_file.type:
-                            # ★PDFをBase64に変換してiframeで表示
                             try:
                                 b64_pdf = base64.b64encode(matching_file.getvalue()).decode('utf-8')
-                                pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="450" type="application/pdf" style="border: 1px solid #ccc; border-radius: 8px;"></iframe>'
+                                pdf_display = f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="450" type="application/pdf" style="border: 1px solid rgba(128,128,128,0.2); border-radius: 8px;"></iframe>'
                                 st.markdown(pdf_display, unsafe_allow_html=True)
-                            except Exception as e:
+                            except Exception:
                                 st.warning("PDFを表示できません")
                         else:
                             try:
@@ -354,31 +371,32 @@ with tab3:
             b_opt = (f_df['bite'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
             f_opt = (f_df['fit'] == 3).sum() / len(f_df) * 100 if len(f_df) > 0 else 0
             
+            # ★ CSSで文字色を自動化（スタイルから color: #64748B 等を削除）
             def render_metric(label, mean_val, opt_rate):
                 if mean_val == 0:
-                    color = "#9e9e9e"
+                    score_color = "inherit"
                     mean_str = "-"
                     opt_str = "- %"
                 else:
                     diff = mean_val - 3.0
-                    color = "#10B981" if opt_rate >= 80 else ("#F59E0B" if opt_rate >= 50 else "#EF4444")
+                    score_color = "#10B981" if opt_rate >= 80 else ("#F59E0B" if opt_rate >= 50 else "#EF4444")
                     mean_str = f"{mean_val:.2f} (誤差 {diff:+.2f})"
                     opt_str = f"{opt_rate:.1f}%"
                 
                 return f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">{label} (適正率)</p>
-                    <h2 style="margin: 10px 0; color: {color}; font-size: 32px; font-weight: 800;">{opt_str}</h2>
-                    <p style="margin: 0; font-size: 13px; color: #64748B;">平均点: {mean_str}</p>
+                <div class="metric-card">
+                    <p style="margin: 0; font-size: 14px; font-weight: bold;">{label} (適正率)</p>
+                    <h2 style="margin: 10px 0; color: {score_color}; font-size: 32px; font-weight: 800;">{opt_str}</h2>
+                    <p style="margin: 0; font-size: 13px;">平均点: {mean_str}</p>
                 </div>
                 """
 
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">📄 対象件数</p>
-                    <h2 style="margin: 10px 0; color: #0F172A; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
+                <div class="metric-card">
+                    <p style="margin: 0; font-size: 14px; font-weight: bold;">📄 対象件数</p>
+                    <h2 style="margin: 10px 0; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
                     <p style="margin: 0; font-size: 13px; color: transparent;">-</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -454,7 +472,7 @@ with tab3:
                         )
                         fig_dist.update_traces(textposition='inside', textfont_size=14)
                         fig_dist.update_layout(
-                            xaxis=dict(tickfont=dict(size=18, color="#1E3A8A", weight="bold"), title=""),
+                            xaxis=dict(tickfont=dict(size=18, color="#3B82F6", weight="bold"), title=""),
                             yaxis=dict(title="件数")
                         )
                         st.plotly_chart(fig_dist, use_container_width=True)
@@ -516,11 +534,10 @@ with tab4:
                 target_row = edit_map[selected_edit_label]
                 
                 with st.container(border=True):
-                    # ★ 保存済みデータがPDFだった場合のプレビュー対応
                     img_url = target_row.get('image_url')
                     if img_url:
                         if ".pdf" in img_url.lower():
-                            st.markdown(f'<iframe src="{img_url}" width="100%" height="450" style="border: 1px solid #ccc; border-radius: 8px;"></iframe>', unsafe_allow_html=True)
+                            st.markdown(f'<iframe src="{img_url}" width="100%" height="450" style="border: 1px solid rgba(128,128,128,0.2); border-radius: 8px;"></iframe>', unsafe_allow_html=True)
                         else:
                             st.image(img_url, use_container_width=True, caption="評価シート画像")
                         
