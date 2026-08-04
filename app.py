@@ -14,7 +14,7 @@ import base64
 # ==========================================
 # 1. アプリケーション初期設定 & CSS
 # ==========================================
-st.set_page_config(page_title="AI分析 Pro (大阪センター)", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="AI品質管理カルテ (大阪センター)", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
@@ -86,7 +86,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="custom-title">🦷 セパレートレスモデル評価 AI分析<br><span style="font-size: 0.7em; color: #888;">(大阪センター)</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="custom-title">🦷 AI品質管理カルテ<br><span style="font-size: 0.7em; color: #888;">(大阪センター)</span></div>', unsafe_allow_html=True)
 st.markdown('<div class="title-underline"></div>', unsafe_allow_html=True)
 
 # ==========================================
@@ -103,8 +103,8 @@ def get_db():
 db = get_db()
 
 SHEET_TYPE_LIST = ["セパレートレス模型", "IOS"]
-MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "メタル", "3Dプリント", "その他"]
-TYPE_LIST = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
+MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "チタン", "3Dプリント", "その他"]
+TYPE_LIST = ["クラウン（単冠）", "ブリッジ", "インレー", "インプラント", "義歯", "その他"]
 
 def safe_int(val, default=3):
     try:
@@ -193,7 +193,9 @@ with tab1:
                 "3. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
                 "キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
                 "sheet_type (IOS または セパレートレス模型), "
-                "restoration_type, material, tooth_position, contact, bite, fit, comments"
+                f"restoration_type ({', '.join(TYPE_LIST)} の中から最も近いもの), "
+                f"material ({', '.join(MATERIAL_LIST)} の中から最も近いもの), "
+                "tooth_position, contact, bite, fit, comments"
             )
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
             
@@ -486,7 +488,7 @@ with tab3:
                 html = f"""
                 <html><head><meta charset="utf-8"><title>品質分析レポート</title></head>
                 <body style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6;">品質分析レポート (大阪センター)</h2>
+                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6;">AI品質管理カルテ (大阪センター)</h2>
                     <p>医院: {s_c} | 種別: {s_st} | 材料: {s_m} | 出力日: {date.today().isoformat()}</p>
                     <div style="background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
                         <h3 style="color: #0F172A;">📊 総合評価（評価「3」の割合）</h3>
