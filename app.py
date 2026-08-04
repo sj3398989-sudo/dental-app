@@ -176,7 +176,7 @@ def display_file_preview(file_obj):
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
-# Tab 1: AI一括登録 (精度優先 ➔ 高容量切り替え版)
+# Tab 1: AI一括登録
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
@@ -210,18 +210,14 @@ with tab1:
                         img = ImageEnhance.Contrast(img).enhance(1.2)
                         cp = img
                     
-                    # ★ 精度優先のフォールバック設計（最高精度 3.5 Flash ➔ 上限500回の 3.5 Flash Lite ➔ 2.5 Flash）
                     res = None
                     try:
-                        # 第1優先: 最高精度の Gemini 3.5 Flash
                         res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
                     except Exception as e_3_5:
                         try:
-                            # 第2優先: 上限500回の Gemini 3.5 Flash Lite
                             res = c.models.generate_content(model='gemini-3.5-flash-lite', contents=[cp, prm], config=ai_config)
                             st.toast(f"ファイル {f.name}: Gemini 3.5 Flash Lite で自動代替解析しました", icon="ℹ️")
                         except Exception as e_3_5_lite:
-                            # 最終バックアップ: Gemini 2.5 Flash
                             res = c.models.generate_content(model='gemini-2.5-flash', contents=[cp, prm], config=ai_config)
                             st.toast(f"ファイル {f.name}: Gemini 2.5 Flash で自動代替解析しました", icon="ℹ️")
 
@@ -467,13 +463,14 @@ with tab3:
                     prm = f"条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
                     
                     res_ai = None
+                    c = genai.Client(api_key=KEY)
                     try:
-                        res_ai = genai.Client(api_key=KEY).models.generate_content(model='gemini-3.5-flash', contents=prm).text
+                        res_ai = c.models.generate_content(model='gemini-3.5-flash', contents=prm).text
                     except Exception:
                         try:
-                            res_ai = genai.Client(api_key=KEY).models.generate_content(model='gemini-3.5-flash-lite', contents=prm).text
+                            res_ai = c.models.generate_content(model='gemini-3.5-flash-lite', contents=prm).text
                         except Exception:
-                            res_ai = genai.Client(api_key=KEY).models.generate_content(model='gemini-2.5-flash', contents=prm).text
+                            res_ai = c.models.generate_content(model='gemini-2.5-flash', contents=prm).text
                     st.info(res_ai)
 
             st.markdown("<br>", unsafe_allow_html=True)
