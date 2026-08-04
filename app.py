@@ -102,6 +102,7 @@ def get_db():
 
 db = get_db()
 
+SHEET_TYPE_LIST = ["セパレートレス模型", "IOS"]
 MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "メタル", "3Dプリント", "その他"]
 TYPE_LIST = ["クラウン", "ブリッジ", "インプラント", "義歯", "その他"]
 
@@ -120,12 +121,10 @@ def save_evaluation_data(d, file_obj=None, idx=0):
         ext, mime = ("pdf", "application/pdf") if is_pdf else ("jpg", "image/jpeg")
         f_nm = f"{int(time.time())}_{idx}.{ext}"
         
-        # ★ 保存時のみ圧縮処理（画像の場合）
         if not is_pdf:
             try:
                 img = Image.open(io.BytesIO(f_b))
                 img = ImageOps.exif_transpose(img)
-                # 長辺1200pxにリサイズ（画質を損なわずにファイルサイズを1/20にする）
                 img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
@@ -146,6 +145,7 @@ def save_evaluation_data(d, file_obj=None, idx=0):
         "patient_name": d.get("patient_name"),
         "slip_number": d.get("slip_number"),
         "completion_date": d.get("completion_date"),
+        "sheet_type": d.get("sheet_type", "セパレートレス模型"), # ★ 追加
         "restoration_type": d.get("restoration_type"),
         "material": d.get("material"),
         "tooth_position": d.get("tooth_position"),
@@ -191,9 +191,11 @@ with tab1:
             c = genai.Client(api_key=KEY)
             prm = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
-                "1. 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
-                "2. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
+                "1. シート上に「IOS」や「セパレートレス」などの記載やチェックがあれば判別してください（不明な場合は「セパレートレス模型」）。\n"
+                "2. 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
+                "3. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
                 "キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
+                "sheet_type (IOS または セパレートレス模型), " # ★ 追加
                 "restoration_type, material, tooth_position, contact, bite, fit, comments"
             )
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
@@ -204,7 +206,6 @@ with tab1:
                     if "pdf" in f.type:
                         cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
                     else:
-                        # ★ AI解析には無圧縮の最高画質（コントラスト補正のみ）で送信
                         img = Image.open(io.BytesIO(f.getvalue()))
                         img = ImageOps.exif_transpose(img)
                         img = ImageEnhance.Contrast(img).enhance(1.2)
@@ -245,6 +246,10 @@ with tab1:
                     except: def_date = date.today()
                     d["completion_date"] = st.date_input("完成日", value=def_date, key=f"dt_{i}").isoformat()
                     
+                    # ★ シート種別の選択を追加
+                    st_val = d.get("sheet_type", "セパレートレス模型")
+                    d["sheet_type"] = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, index=SHEET_TYPE_LIST.index(st_val) if st_val in SHEET_TYPE_LIST else 0, key=f"st_{i}")
+                    
                 with col_form2:
                     d["restoration_type"] = st.selectbox("種別", TYPE_LIST, index=TYPE_LIST.index(d.get("restoration_type")) if d.get("restoration_type") in TYPE_LIST else 0, key=f"rt_{i}")
                     d["material"] = st.selectbox("材料", MATERIAL_LIST, index=MATERIAL_LIST.index(d.get("material")) if d.get("material") in MATERIAL_LIST else 0, key=f"mat_{i}")
@@ -284,6 +289,7 @@ with tab2:
                 m_patient = st.text_input("👤 患者名 (必須)", key="m_p")
                 m_slip = st.text_input("📝 伝票番号", key="m_s")
                 m_date = st.date_input("📅 完成日", value=date.today(), key="m_d")
+                m_stype = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, key="m_st") # ★ 追加
             with c2:
                 m_type = st.selectbox("🦷 種別", TYPE_LIST, key="m_t")
                 m_material = st.selectbox("💎 材料", MATERIAL_LIST, key="m_m")
@@ -299,7 +305,8 @@ with tab2:
                 elif db:
                     save_evaluation_data({
                         "clinic_name": m_clinic, "patient_name": m_patient, "slip_number": m_slip,
-                        "completion_date": m_date.isoformat(), "restoration_type": m_type, "material": m_material,
+                        "completion_date": m_date.isoformat(), "sheet_type": m_stype,
+                        "restoration_type": m_type, "material": m_material,
                         "tooth_position": m_pos, "contact": m_con, "bite": m_bit, "fit": m_fit, "comments": m_com
                     })
                     st.toast("手動登録が完了しました！", icon="✅")
@@ -316,13 +323,16 @@ with tab3:
             df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce')
             
             with st.container(border=True):
-                cf1, cf2, cf3 = st.columns(3)
+                # ★ 4列に分割して「シート種別」の絞り込みを追加
+                cf1, cf2, cf3, cf4 = st.columns(4)
                 s_c = cf1.selectbox("🏥 医院で絞り込み", ["すべて"] + list(df["clinic_name"].dropna().unique()))
-                s_p = cf2.selectbox("📅 期間で絞り込み", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
-                s_m = cf3.selectbox("💎 材料で絞り込み", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
+                s_st = cf2.selectbox("📄 シート種別", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
+                s_p = cf3.selectbox("📅 期間で絞り込み", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
+                s_m = cf4.selectbox("💎 材料で絞り込み", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
             
             f_df = df.copy()
             if s_c != "すべて": f_df = f_df[f_df["clinic_name"] == s_c]
+            if s_st != "すべて" and "sheet_type" in f_df.columns: f_df = f_df[f_df["sheet_type"] == s_st]
             if s_m != "すべて" and "material" in f_df.columns: f_df = f_df[f_df["material"] == s_m]
             
             p_map = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
@@ -356,7 +366,8 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0 and 'material' in f_df.columns:
-                with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=True):
+                # ★ 初期状態を閉じる設定に変更 (expanded=False)
+                with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=False):
                     cross_df = f_df.groupby(['clinic_name', 'material']).agg(
                         件数=('id', 'count'),
                         コンタクト平均=('contact', 'mean'),
@@ -392,8 +403,9 @@ with tab3:
 
             if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
                 with st.spinner("AIがデータを分析中..."):
-                    dic = f_df[['completion_date', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']].to_dict(orient='records')
-                    prm = f"条件（医院:{s_c}, 期間:{s_p}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
+                    cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
+                    dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
+                    prm = f"条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
                     st.info(genai.Client(api_key=KEY).models.generate_content(model='gemini-3.5-flash', contents=prm).text)
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -428,8 +440,8 @@ with tab3:
                 html = f"""
                 <html><head><meta charset="utf-8"><title>品質分析レポート</title></head>
                 <body style="font-family: sans-serif; padding: 20px; color: #333;">
-                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6;">セパレートレスモデル 品質分析レポート (大阪センター)</h2>
-                    <p>医院: {s_c} | 期間: {s_p} | 材料: {s_m} | 出力日: {date.today().isoformat()}</p>
+                    <h2 style="color: #1E3A8A; border-bottom: 2px solid #3B82F6;">品質分析レポート (大阪センター)</h2>
+                    <p>医院: {s_c} | 種別: {s_st} | 材料: {s_m} | 出力日: {date.today().isoformat()}</p>
                     <div style="background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0;">
                         <h3 style="color: #0F172A;">📊 総合評価（評価「3」の割合）</h3>
                         <ul style="font-size: 16px;">
@@ -463,7 +475,7 @@ with tab4:
             if q:
                 df = df[df['patient_name'].astype(str).str.contains(q, na=False) | df['clinic_name'].astype(str).str.contains(q, na=False)]
 
-            display_cols = [c for c in ['completion_date', 'clinic_name', 'patient_name', 'restoration_type', 'material', 'contact', 'bite', 'fit'] if c in df.columns]
+            display_cols = [c for c in ['completion_date', 'sheet_type', 'clinic_name', 'patient_name', 'restoration_type', 'material', 'contact', 'bite', 'fit'] if c in df.columns]
             st.dataframe(df[display_cols], use_container_width=True)
             
             st.markdown("---")
@@ -490,6 +502,10 @@ with tab4:
                             try: e_date_val = date.fromisoformat(str(target_row.get('completion_date'))[:10])
                             except: e_date_val = date.today()
                             e_date = st.date_input("完成日", value=e_date_val)
+                            
+                            st_val = str(target_row.get('sheet_type') or "セパレートレス模型")
+                            e_stype = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, index=SHEET_TYPE_LIST.index(st_val) if st_val in SHEET_TYPE_LIST else 0)
+                            
                         with col_e2:
                             e_type = st.selectbox("種別", TYPE_LIST, index=TYPE_LIST.index(target_row.get('restoration_type')) if target_row.get('restoration_type') in TYPE_LIST else 0)
                             e_material = st.selectbox("材料", MATERIAL_LIST, index=MATERIAL_LIST.index(target_row.get('material')) if target_row.get('material') in MATERIAL_LIST else 0)
@@ -502,19 +518,20 @@ with tab4:
                         if st.form_submit_button("🔄 変更を保存する", type="primary"):
                             db.table("evaluations").update({
                                 "clinic_name": e_clinic, "patient_name": e_patient, "slip_number": e_slip,
-                                "completion_date": e_date.isoformat(), "restoration_type": e_type, "material": e_material,
+                                "completion_date": e_date.isoformat(), "sheet_type": e_stype,
+                                "restoration_type": e_type, "material": e_material,
                                 "tooth_position": e_pos, "contact": e_con, "bite": e_bit, "fit": e_fit, "comments": e_com
                             }).eq("id", target_row['id']).execute()
                             st.success("データを更新しました！画面を再読み込みしてください。")
 
             st.markdown("---")
-            # ★ 新機能: 既存データの一括更新機能（全データの材料をCAD/CAM冠に変更）
-            with st.expander("🔧 既存データの一括更新（材料をCAD/CAM冠に変更）", expanded=False):
-                st.info("現在データベースに保存されているすべての評価データの「材料」項目を、一括で「CAD/CAM冠」に変更します。")
-                if st.button("⚠️ 全データの材料を「CAD/CAM冠」に更新する"):
+            # ★ 新機能: 既存データの一括更新（空欄になっているシート種別をすべて「セパレートレス模型」に埋める）
+            with st.expander("🔧 既存データのシート種別を一括更新", expanded=False):
+                st.info("過去に入力したすべてのデータの「シート種別」を、一括で「セパレートレス模型」に更新します。")
+                if st.button("⚠️ 全データの種別を「セパレートレス模型」に更新する"):
                     try:
-                        db.table("evaluations").update({"material": "CAD/CAM冠"}).neq("id", 0).execute()
-                        st.success("🎉 全データの材料を「CAD/CAM冠」に一括更新しました！")
+                        db.table("evaluations").update({"sheet_type": "セパレートレス模型"}).neq("id", 0).execute()
+                        st.success("🎉 全データのシート種別を「セパレートレス模型」に更新しました！")
                         time.sleep(1.5)
                         st.rerun()
                     except Exception as e:
