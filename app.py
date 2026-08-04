@@ -19,21 +19,24 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. スマホ対応・スタイリッシュCSS ---
+# --- 2. スマホ対応・スタイリッシュCSS（白飛び対策済み） ---
 st.markdown("""
 <style>
+    /* Streamlit標準のメニューとフッターを隠す */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     
-    .stApp {
-        background-color: #F8F9FA;
-    }
+    /* 
+       ※背景色の強制指定を削除しました。
+       これにより、スマホのライト/ダークモードに合わせて文字色が自動調整され、白飛びしなくなります。
+    */
     
+    /* タイトルの装飾（スマホでも綺麗に収まる可変サイズ） */
     .custom-title {
         font-size: clamp(1.3rem, 5vw, 2.0rem);
         font-weight: 800;
-        color: #1E3A8A;
+        color: #3B82F6;
         margin-bottom: 5px;
         line-height: 1.3;
     }
@@ -46,6 +49,7 @@ st.markdown("""
         margin-bottom: 25px;
     }
     
+    /* プライマリボタン（主要アクション）のモダン化 */
     .stButton>button[kind="primary"] {
         background: linear-gradient(135deg, #3B82F6, #14B8A6);
         color: white;
@@ -61,6 +65,7 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
+    /* エクスパンダー（折りたたみ）をカード風に */
     .streamlit-expanderHeader {
         border-radius: 8px;
         border: 1px solid #E2E8F0;
@@ -69,7 +74,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- カスタムヘッダー ---
-st.markdown('<div class="custom-title">🦷 セパレートレスモデル評価 AI分析<br><span style="font-size: 0.7em; color: #64748B;">(大阪センター)</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="custom-title">🦷 セパレートレスモデル評価 AI分析<br><span style="font-size: 0.7em; color: #888;">(大阪センター)</span></div>', unsafe_allow_html=True)
 st.markdown('<div class="title-underline"></div>', unsafe_allow_html=True)
 
 # --- データベース等の初期化 ---
@@ -357,19 +362,19 @@ with tab3:
                     opt_str = f"{opt_rate:.1f}%"
                 
                 return f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">{label} (適正率)</p>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
+                    <p style="margin: 0; font-size: 14px; font-weight: bold;">{label} (適正率)</p>
                     <h2 style="margin: 10px 0; color: {color}; font-size: 32px; font-weight: 800;">{opt_str}</h2>
-                    <p style="margin: 0; font-size: 13px; color: #64748B;">平均点: {mean_str}</p>
+                    <p style="margin: 0; font-size: 13px;">平均点: {mean_str}</p>
                 </div>
                 """
 
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
-                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; background-color: #FFFFFF; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                    <p style="margin: 0; font-size: 14px; color: #64748B; font-weight: bold;">📄 対象件数</p>
-                    <h2 style="margin: 10px 0; color: #0F172A; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
+                <div style="padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center;">
+                    <p style="margin: 0; font-size: 14px; font-weight: bold;">📄 対象件数</p>
+                    <h2 style="margin: 10px 0; font-size: 32px; font-weight: 800;">{len(f_df)}<span style='font-size:16px;'>件</span></h2>
                     <p style="margin: 0; font-size: 13px; color: transparent;">-</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -419,18 +424,15 @@ with tab3:
                 
             with col_chart2:
                 with st.container(border=True):
-                    # ★ タイトルを変更
                     st.markdown("**📊 スコア分布**")
                     if len(f_df) > 0:
                         dist_data = []
                         total_cnt = len(f_df)
-                        # ★ 項目名を日本語に変更
                         name_map = {'contact': 'コンタクト', 'bite': 'バイト', 'fit': '適合'}
                         
                         for col in ['contact', 'bite', 'fit']:
                             counts = f_df[col].value_counts().reindex([1,2,3,4,5], fill_value=0)
                             for score, count in counts.items():
-                                # ★ 各スコアのパーセンテージを計算
                                 pct = (count / total_cnt * 100) if total_cnt > 0 else 0
                                 txt = f"{pct:.1f}%" if count > 0 else ""
                                 dist_data.append({
@@ -442,12 +444,10 @@ with tab3:
                         dist_df = pd.DataFrame(dist_data)
                         color_map = {'1': '#93C5FD', '2': '#BFDBFE', '3': '#10B981', '4': '#FDBA74', '5': '#F97316'}
                         
-                        # ★ 割合テキストをグラフ上に表示
                         fig_dist = px.bar(
                             dist_df, x='評価項目', y='件数', color='スコア', 
                             color_discrete_map=color_map, barmode='stack', text='割合'
                         )
-                        # 文字サイズやX軸のラベル（コンタクト等）を太く大きくする
                         fig_dist.update_traces(textposition='inside', textfont_size=14)
                         fig_dist.update_layout(
                             xaxis=dict(tickfont=dict(size=18, color="#1E3A8A", weight="bold"), title=""),
