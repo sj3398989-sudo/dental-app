@@ -51,7 +51,7 @@ URL = st.secrets.get("SUPABASE_URL")
 S_KEY = st.secrets.get("SUPABASE_KEY")
 STORAGE_BUCKET = "sheet_images"
 
-# ★モデル指定の定数化
+# モデル指定の定数化
 DEFAULT_MODEL = "gemini-3.5-flash"
 FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3-flash"]
 GEMINI_MODELS = [DEFAULT_MODEL] + FALLBACK_MODELS
@@ -131,10 +131,11 @@ def upload_file_to_storage(file_obj):
             try:
                 img = Image.open(io.BytesIO(f_b))
                 img = ImageOps.exif_transpose(img)
-                img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+                # ★ 精度向上: 画像の縮小サイズを1200px -> 1800px に引き上げ（細かい文字や丸潰れを防ぐ）
+                img.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
                 if img.mode != 'RGB': img = img.convert('RGB')
                 buf = io.BytesIO()
-                img.save(buf, format='JPEG', quality=80, optimize=True)
+                img.save(buf, format='JPEG', quality=85, optimize=True)
                 f_b = buf.getvalue()
             except Exception: pass
             
@@ -143,13 +144,6 @@ def upload_file_to_storage(file_obj):
     except Exception as e:
         st.warning(f"画像アップロードスキップ: {e}")
         return None
-
-def get_signed_url(file_path):
-    if not file_path or not db: return None
-    try:
-        res = db.storage.from_(STORAGE_BUCKET).create_signed_url(file_path, 3600)
-        return res.get('signedURL', None)
-    except Exception: return None
 
 def display_file_preview(file_obj):
     if not file_obj:
@@ -162,6 +156,7 @@ def display_file_preview(file_obj):
         try: st.image(file_obj.getvalue(), use_container_width=True)
         except Exception: st.warning("画像を表示できません")
 
+# ★ 並列処理ワーカー (Pythonによるルールベース補正処理を追加)
 def process_single_file(f, actual_idx, prompt_text, ai_config):
     try:
         if "pdf" in f.type: cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
@@ -175,11 +170,30 @@ def process_single_file(f, actual_idx, prompt_text, ai_config):
         if res and res.text:
             parsed = clean_and_parse_json(res.text) 
             if isinstance(parsed, dict): parsed = [parsed]
+            
+            # ⬇️ 【Pythonの仕事】ここでAIが出したブレを厳密なルールで補正・変換する
             for item in parsed:
                 item["_f_idx"] = actual_idx
+                
+                # ① ブリッジ判定 (部位に連続する数字やハイフンがあれば強制的にブリッジにする)
                 tp = str(item.get("tooth_position", ""))
-                if re.search(r'\d{2,}', tp) or re.search(r'\d[-~]\d', tp):
+                if re.search(r'\d{2,}', tp) or re.search(r'\d[-~]\d', tp) or re.search(r'\d\.\d', tp):
                     item["restoration_type"] = "ブリッジ"
+                
+                # ② 生の日付(raw_completion_date)をPythonで確実にYYYY-MM-DDへ変換
+                raw_date = str(item.get("raw_completion_date", "")).strip().replace('.', '/').replace('・', '/').replace('-', '/')
+                parts = re.split(r'/', raw_date)
+                dt_obj = date.today()
+                if len(parts) >= 3:
+                    y, m, d = parts[0], parts[1], parts[2]
+                    # 「26/8/5」のような2桁西暦を「2026」に補正
+                    if len(y) == 2 and y.isdigit(): 
+                        y = "20" + y
+                    try:
+                        dt_obj = date(int(y), int(m), int(d))
+                    except: pass
+                item["completion_date"] = dt_obj.isoformat()
+
             return parsed
     except Exception as e:
         return {"error": f"ファイル解析エラー ({f.name}): {e}"}
@@ -202,22 +216,25 @@ with tab1:
     up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed", key=st.session_state["uploader_key"])
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
-        with st.spinner("AIがシートを並列解析中... (高速化モード)"):
+        with st.spinner("AIがシートを並列解析中... (高速・高精度モード)"):
+            
+            # ★ プロンプト改良：AIの役割を「空気読み」と「見たままのOCR」に特化させる
             prompt_text = (
-                "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
-                "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
-                "2. 製品名からの種別・材料の判定ルール:\n"
-                "   - 「CAD冠」が含まれる場合 => material: CAD/CAM冠, restoration_type: クラウン（単冠）\n"
-                "   - 「CADIN」「CADインレー」「CADイン」が含まれる場合 => material: CAD/CAM冠, restoration_type: インレー\n"
-                "   - 「ZR」や「ジル」から始まる場合 => material: ジルコニア\n"
-                "   - 「ZR-IN」「ZRインレー」が含まれる場合 => material: ジルコニア, restoration_type: インレー\n"
-                "   - 「ZR-C」や「ZR-E」が含まれる場合 => material: ジルコニア, restoration_type: クラウン（単冠）\n"
-                f"   ※上記に当てはまらない場合は、restoration_typeは {', '.join(TYPE_LIST)} から、materialは {', '.join(MATERIAL_LIST)} から最も近いものを選択。\n"
-                "3. スコアの抽出: 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
-                "4. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
-                "出力キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
-                "sheet_type, restoration_type, material, tooth_position, contact, bite, fit, comments"
+                "このファイルは歯科補綴物の評価シート（手書き含む）です。以下の指示に従い、正確にデータを抽出・推論してください。\n\n"
+                "【1. 曖昧な手書きの文脈推測（材料・種別）】\n"
+                "手書き文字が崩れていたり略称（「ジ」「2R」「ZR」など）であっても、文脈から以下の選択肢に必ず当てはめてください。\n"
+                f"- material: {', '.join(MATERIAL_LIST)}\n"
+                f"- restoration_type: {', '.join(TYPE_LIST)}\n"
+                "不明な場合は「その他」にしてください。\n\n"
+                "【2. 見たままの抽出（日付・部位・数値）】\n"
+                "- 日付 (raw_completion_date): 西暦への変換などは絶対にせず、紙に書かれたままの文字（例: 26/8/5, 8.5）を抽出してください。\n"
+                "- 部位 (tooth_position): 書かれたままの数字や記号を抽出してください。\n"
+                "- 評価スコア (contact, bite, fit): 1〜5の数字のうち、丸（〇）やチェック（✓）がついている数字を正確に1つだけ抽出してください。\n\n"
+                "【3. その他】\n"
+                "- シート種別 (sheet_type): 「IOSデータ受注」等の記載があれば「IOS」、なければ「セパレートレス模型」。\n"
+                "出力キー: clinic_name, patient_name, slip_number, raw_completion_date, sheet_type, restoration_type, material, tooth_position, contact, bite, fit, comments"
             )
+            
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
             
             r_list = []
@@ -239,6 +256,10 @@ with tab1:
 
             status_text.empty()
             progress_bar.empty()
+            
+            # 表示順をアップロード時の順番にソートして戻す
+            r_list = sorted(r_list, key=lambda x: x.get("_f_idx", 0))
+            
             st.session_state["r_list"] = r_list
             st.session_state["f_list"] = up_files
             st.toast(f"合計 {len(r_list)} 件のデータを検出しました！", icon="✨")
@@ -479,7 +500,6 @@ with tab3:
 
         if st.button("🤖 AI詳細分析（時系列トレンド・専門基準による考察）", type="primary", use_container_width=True):
             with st.spinner("AIが時系列データを含めて分析中..."):
-                # ★修正：年月（YYYY-MM）ごとの集計にすることで、AIに「時系列トレンド」を分析させる
                 f_df_trend = f_df.copy()
                 f_df_trend['年月'] = pd.to_datetime(f_df_trend['completion_date']).dt.strftime('%Y-%m')
                 
