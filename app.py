@@ -17,6 +17,8 @@ import re
 # ==========================================
 st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
+# タブ周りのCSSを削除し、Streamlitの標準仕様（最も安定したレイアウト）にお任せします。
+# その他のカードやボタン、入力フォームなどは美しいApple風を維持しています。
 st.markdown("""
 <style>
     .stApp { background-color: #F5F5F7 !important; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
@@ -31,39 +33,6 @@ st.markdown("""
     .metric-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.5); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.06); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
     
-    /* ======== ★修正箇所：タブの表示（最強上書き版） ======== */
-    /* タブのボタン自体 */
-    button[role="tab"] {
-        padding: 10px 24px !important; 
-        background-color: transparent !important;
-    }
-    
-    /* タブの中のテキスト要素（p, spanなど何が来ても強制的に大きくする） */
-    button[role="tab"] * {
-        font-size: 17px !important; 
-        font-weight: 700 !important;
-        color: #8E8E93 !important; 
-    }
-    
-    /* 選択中のタブのテキストは黒色に */
-    button[role="tab"][aria-selected="true"] * {
-        color: #1D1D1F !important;
-    }
-    
-    /* 【憎き赤線を消す】タブ下のインジケーターの色を強制的にダークグレーに上書き */
-    div[data-testid="stTabIndicator"], 
-    div[data-baseweb="tab-highlight"] {
-        background-color: #1D1D1F !important;
-        height: 3px !important;
-        border-radius: 3px 3px 0 0 !important;
-    }
-    
-    /* バージョンによってはボーダーで赤線を出している場合の対策 */
-    button[role="tab"][aria-selected="true"] {
-        border-bottom-color: #1D1D1F !important;
-    }
-    /* ======================================================= */
-
     .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
@@ -172,13 +141,8 @@ def display_file_preview(file_obj):
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = "uploader_" + str(time.time())
 
-# ★ 物理的に絵文字と文字を離すため、「全角スペース」を仕込みました
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🤖　AI一括", 
-    "✍️　手動", 
-    "📊　分析", 
-    "📋　管理"
-])
+# Streamlit標準のタブ（一番崩れず綺麗に表示されます）
+tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
 # Tab 1: AI一括登録
