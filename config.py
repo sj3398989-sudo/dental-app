@@ -9,18 +9,15 @@ TYPE_LIST = ["クラウン（単冠）", "ブリッジ", "インレー", "イン
 STORAGE_BUCKET = "sheet_images"
 
 # ==========================================
-# 環境変数・API設定
+# 環境変数・API設定（直書き版）
 # ==========================================
-try:
-    KEY = st.secrets["GEMINI_API_KEY"]
-    URL = st.secrets["SUPABASE_URL"]
-    S_KEY = st.secrets["SUPABASE_KEY"]
-    # ★ HMAC用のシークレットキー（未設定時はデフォルト値を使用）
-    HASH_SECRET = st.secrets.get("HASH_SECRET", "super-secret-lab-key-2026")
-    DEFAULT_MODEL = st.secrets.get("GEMINI_MODEL", "gemini-3.5-flash")
-except Exception:
-    KEY, URL, S_KEY, HASH_SECRET = None, None, None, "fallback-secret"
-    DEFAULT_MODEL = "gemini-3.5-flash"
+# ⚠️ 注意: GitHubリポジトリが「Private（非公開）」になっていることを必ずご確認ください。
+
+KEY = "ここにGeminiのAPIキーを貼り付け"
+URL = "ここにSupabaseのURLを貼り付け"
+S_KEY = "ここにSupabaseのAPIキーを貼り付け"
+HASH_SECRET = "super-secret-lab-key-2026"
+DEFAULT_MODEL = "gemini-3.5-flash"
 
 FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3-flash"]
 GEMINI_MODELS = [DEFAULT_MODEL] + FALLBACK_MODELS
