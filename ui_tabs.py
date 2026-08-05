@@ -215,17 +215,130 @@ def render_tab2(db_client):
                         if img_path: repo.remove_images([img_path])
 
 # ------------------------------------------
-# Tab 3: 分析ダッシュボード (大幅省略・既存機能維持)
+# Tab 3: 分析ダッシュボード (完全復元版)
 # ------------------------------------------
 def render_tab3():
     st.markdown("### 📊 品質分析ダッシュボード")
-    df = fetch_evaluations_cached()
-    if df.empty:
-        st.info("データがありません。")
+    f_df = fetch_evaluations_cached()
+    
+    if f_df.empty:
+        st.info("保存されたデータはまだありません。")
         return
-    # 分析用UI（※変更なしのため、文字数制約を考慮しUIコンポーネント構造は維持）
-    # ※実際の環境ではここに既存のダッシュボード・グラフコードが入ります。
-    st.success(f"現在 {len(df)} 件の分析データがあります（時系列グラフ等は前回のコード通り動作します）。")
+        
+    with st.container(border=True):
+        cf1, cf2, cf3, cf4, cf5 = st.columns(5)
+        s_c = cf1.selectbox("🏥 医院", ["すべて"] + sorted(list(f_df["clinic_name"].dropna().unique())))
+        s_st = cf2.selectbox("📄 シート", ["すべて"] + list(f_df.get("sheet_type", pd.Series([""])).dropna().unique()))
+        s_p = cf3.selectbox("📅 期間", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
+        s_m = cf4.selectbox("💎 材料", ["すべて"] + list(f_df.get("material", pd.Series([""])).dropna().unique()))
+        s_r = cf5.selectbox("🦷 種別", ["すべて"] + list(f_df.get("restoration_type", pd.Series([""])).dropna().unique()))
+    
+    if s_c != "すべて": f_df = f_df[f_df["clinic_name"] == s_c]
+    if s_st != "すべて" and "sheet_type" in f_df.columns: f_df = f_df[f_df["sheet_type"] == s_st]
+    if s_m != "すべて" and "material" in f_df.columns: f_df = f_df[f_df["material"] == s_m]
+    if s_r != "すべて" and "restoration_type" in f_df.columns: f_df = f_df[f_df["restoration_type"] == s_r]
+    
+    p_map = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
+    if s_p in p_map: 
+        cutoff = pd.Timestamp.today().date() - pd.DateOffset(months=p_map[s_p])
+        f_df = f_df[f_df['completion_date'] >= cutoff.date()]
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    def get_stats(col):
+        return (f_df[col].mean(), (f_df[col] == 3).sum() / len(f_df) * 100) if len(f_df) > 0 else (0, 0)
+
+    c_m, c_opt = get_stats('contact')
+    b_m, b_opt = get_stats('bite')
+    f_m, f_opt = get_stats('fit')
+    
+    def render_metric(label, mean_val, opt_rate):
+        if mean_val == 0: return f'<div class="metric-card"><p style="font-weight:bold; color: #1D1D1F;">{label}</p><h2 style="color: #1D1D1F;">- %</h2></div>'
+        color = "#34C759" if opt_rate >= 80 else ("#FF9500" if opt_rate >= 50 else "#FF3B30")
+        return f"""<div class="metric-card"><p style="margin: 0; font-size: 14px; font-weight: 600; color: #8E8E93;">{label} (適正率)</p>
+            <h2 style="margin: 10px 0; color: {color}; font-size: 34px; font-weight: 800;">{opt_rate:.1f}%</h2>
+            <p style="margin: 0; font-size: 13px; color: #1D1D1F; font-weight: 500;">平均点: {mean_val:.2f} <span style="color:#8E8E93;">(誤差 {mean_val-3.0:+.2f})</span></p></div>"""
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.markdown(f'<div class="metric-card"><p style="margin: 0; font-size: 14px; font-weight: 600; color: #8E8E93;">📄 対象件数</p><h2 style="margin: 10px 0; font-size: 34px; font-weight: 800; color: #1D1D1F;">{len(f_df)}<span style="font-size:16px;">件</span></h2><p style="margin: 0; font-size: 13px; color: transparent;">-</p></div>', unsafe_allow_html=True)
+    with col2: st.markdown(render_metric("コンタクト", c_m, c_opt), unsafe_allow_html=True)
+    with col3: st.markdown(render_metric("バイト", b_m, b_opt), unsafe_allow_html=True)
+    with col4: st.markdown(render_metric("適合", f_m, f_opt), unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if len(f_df) > 0 and 'material' in f_df.columns:
+        with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=False):
+            cross_df = f_df.groupby(['clinic_name', 'material']).agg(
+                件数=('id', 'count'),
+                コンタクト平均=('contact', 'mean'), バイト平均=('bite', 'mean'), 適合平均=('fit', 'mean')
+            ).reset_index()
+            
+            alerts = []
+            for _, row in cross_df[cross_df['件数'] >= 2].iterrows():
+                if row['バイト平均'] >= 3.4: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが高めの傾向があります（平均: {row['バイト平均']:.2f}）")
+                elif row['バイト平均'] <= 2.6: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが低めの傾向があります（平均: {row['バイト平均']:.2f}）")
+                if row['コンタクト平均'] >= 3.4: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがきつい傾向があります（平均: {row['コンタクト平均']:.2f}）")
+                elif row['コンタクト平均'] <= 2.6: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがゆるい傾向があります（平均: {row['コンタクト平均']:.2f}）")
+
+            if alerts:
+                for alt in alerts: st.markdown(f'<div class="alert-card">{alt}</div>', unsafe_allow_html=True)
+            else:
+                st.success("✅ 特定の医院×材料における顕著な品質偏差（大きなズレ）は検出されませんでした。")
+
+            st.markdown("<br><b>【医院 × 材料別 スコアマトリクス】</b>", unsafe_allow_html=True)
+            st.dataframe(cross_df.style.format({'コンタクト平均': '{:.2f}', 'バイト平均': '{:.2f}', '適合平均': '{:.2f}'}), use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if st.button("🤖 AI詳細分析（時系列トレンド・専門基準による考察）", type="primary", use_container_width=True):
+        with st.spinner("AIが時系列データを含めて分析中..."):
+            f_df_trend = f_df.copy()
+            f_df_trend['年月'] = pd.to_datetime(f_df_trend['completion_date']).dt.strftime('%Y-%m')
+            
+            summary_df = f_df_trend.groupby(['年月', 'clinic_name', 'restoration_type', 'material']).agg(
+                件数=('id', 'count'),
+                コンタクト平均=('contact', 'mean'),
+                バイト平均=('bite', 'mean'),
+                適合平均=('fit', 'mean')
+            ).round(2).reset_index()
+            
+            dic_data = summary_df.to_dict(orient='records')
+            prompt_text = (
+                f"【重要：必ず日本語で回答してください】\n"
+                f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。\n"
+                "評価スコアは「3が適正」「1が弱い」「5がきつい」の前提で、プロの歯科技工士の視点から考察してください。\n"
+                "【重要】データには「年月」が含まれています。時系列での品質の変化があれば必ず言及してください。\n"
+                f"集計データ:\n{dic_data}"
+            )
+            try:
+                res_ai = call_gemini_with_fallback(prompt_text=prompt_text)
+                st.info(res_ai.text if res_ai else "分析を完了できませんでした。")
+            except Exception as e: st.error(f"分析エラー: {e}")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.markdown("**📊 スコア分布**")
+        if len(f_df) > 0:
+            name_map = {'contact': 'コンタクト', 'bite': 'バイト', 'fit': '適合'}
+            dist_data = [
+                {'評価項目': name_map[col], 'スコア': str(score), '件数': count, '割合': f"<b>{count/len(f_df)*100:.1f}%</b>" if count > 0 else ""}
+                for col in ['contact', 'bite', 'fit']
+                for score, count in f_df[col].value_counts().reindex([1,2,3,4,5], fill_value=0).items()
+            ]
+            apple_colors = {'1': '#007AFF', '2': '#5AC8FA', '3': '#34C759', '4': '#FF9500', '5': '#FF3B30'}
+            fig_dist = px.bar(pd.DataFrame(dist_data), x='評価項目', y='件数', color='スコア', color_discrete_map=apple_colors, barmode='stack', text='割合')
+            fig_dist.update_traces(textposition='inside', textfont_size=16)
+            fig_dist.update_layout(dragmode=False, xaxis=dict(title=""), yaxis=dict(title="件数"), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
+
+    with st.expander("📈 月別推移（品質トレンド）を開く", expanded=False):
+        if len(f_df) > 0:
+            trend_df = f_df.assign(month=pd.to_datetime(f_df['completion_date']).dt.to_period('M').astype(str)).groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
+            fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5], color_discrete_sequence=['#007AFF', '#5AC8FA', '#34C759'])
+            fig_line.add_hline(y=3.0, line_dash="dash", line_color="#8E8E93", annotation_text="適正値 (3.0)")
+            fig_line.update_layout(dragmode=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_line, use_container_width=True, config={'displayModeBar': False})
 
 # ------------------------------------------
 # Tab 4: 履歴・管理
