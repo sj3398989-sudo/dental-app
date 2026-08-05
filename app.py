@@ -105,12 +105,19 @@ def prep_dataframe(df):
                 df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
 
-def call_gemini_with_fallback(contents, prm, ai_config=None):
+# ★ 修正箇所：テキスト単体でも画像＋テキストでも安全にAIを呼び出せるように改修
+def call_gemini_with_fallback(contents, prm=None, ai_config=None):
     client = genai.Client(api_key=KEY)
     models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash']
+    
+    if prm:
+        payload = [contents, prm]
+    else:
+        payload = contents
+
     for idx, model in enumerate(models):
         try:
-            return client.models.generate_content(model=model, contents=[contents, prm] if isinstance(contents, (Image.Image, types.Part)) else prm, config=ai_config)
+            return client.models.generate_content(model=model, contents=payload, config=ai_config)
         except Exception as e:
             if idx == len(models) - 1:
                 raise e 
@@ -258,7 +265,7 @@ with tab1:
     if "r_list" in st.session_state:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📝 抽出データの確認と修正")
-        st.markdown('<div class="shortcut-guide">💡 左端の「✅ 選択」にチェックを入れると、下部のパネルから複数データを一気に変更できます。</div>', unsafe_allow_html=True)
+        st.info("💡 操作方法：左端の「✅ 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
         
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
@@ -366,7 +373,7 @@ with tab1:
 # ------------------------------------------
 with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
-    st.markdown('<div class="shortcut-guide">⌨️ 各種項目を入力して、手動で登録ボタンを押して下さい。</div>', unsafe_allow_html=True)
+    st.info("⌨️ 各種項目を入力して、手動で登録ボタンを押して下さい。")
     with st.container(border=True):
         with st.form("manual_entry_form", clear_on_submit=True):
             m_file = st.file_uploader("📄 評価シート画像 (任意)", type=["jpg", "png", "pdf"])
@@ -475,7 +482,7 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
-            # ★ 修正箇所：日本語指定プロンプトの追加
+            # ★ 修正箇所：AI呼び出しの不具合を解消（prmのみを正しく渡す）
             if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
                 with st.spinner("AIがデータを分析中..."):
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
@@ -484,12 +491,12 @@ with tab3:
                     prm = (
                         f"【重要：必ず日本語で回答してください】\n"
                         f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。\n"
-                        "評価スコアは「3が適正」「1が弱い（緩い・低い）」「5がきつい（高い）」という前提で、プロの歯科技工士の視点から考察・分析を行ってください。\n"
+                        "評価スコアは「3が適正」「1が弱い（緩い・低い）」「5がきついの前提で、プロの歯科技工士の視点から考察・分析を行ってください。\n"
                         f"データ:\n{dic}"
                     )
                     
                     try:
-                        res_ai = call_gemini_with_fallback(prm, "")
+                        res_ai = call_gemini_with_fallback(prm)
                         st.info(res_ai.text if res_ai else "分析を完了できませんでした。")
                     except Exception as e:
                         st.error(f"分析エラー: {e}")
@@ -565,19 +572,19 @@ with tab3:
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">コンタクト</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">弱い（緩い）</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや弱い</td>
-                                <td style="padding: 10px; border: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border-top: 2px solid #007AFF; border-bottom: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">バイト</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">低い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや低い</td>
-                                <td style="padding: 10px; border: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border-top: 2px solid #007AFF; border-bottom: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">やや高い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">高い</td>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">適合</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">緩い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや緩い</td>
-                                <td style="padding: 10px; border: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border-top: 2px solid #007AFF; border-bottom: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
                             </tr>
                         </table>
