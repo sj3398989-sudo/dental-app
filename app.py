@@ -1,6 +1,5 @@
 import streamlit as st
-from config import SHEET_TYPE_LIST, MATERIAL_LIST, TYPE_LIST, KEY
-from db import get_db, fetch_evaluations
+from db import get_db
 import ui_tabs as ui
 
 # 画面全体設定
