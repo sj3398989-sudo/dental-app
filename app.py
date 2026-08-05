@@ -49,15 +49,15 @@ st.markdown("""
     }
     .stButton>button[kind="primary"]:hover {
         background-color: #0062CC !important;
-        transform: scale(0.98) !important; /* クリック時の心地よい沈み込み */
+        transform: scale(0.98) !important;
         box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2) !important;
     }
     
-    /* 枠やコンテナ (カードUIのなめらかな角丸と影) */
+    /* 枠やコンテナ */
     div[data-testid="stVerticalBlock"] > div[style*="border"] {
         background-color: #FFFFFF !important;
         border: 1px solid rgba(0,0,0,0.05) !important;
-        border-radius: 18px !important; /* Squircle風の角丸 */
+        border-radius: 18px !important; 
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04) !important;
         padding: 24px !important;
     }
@@ -85,7 +85,7 @@ st.markdown("""
         box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important;
     }
     
-    /* メトリックカード（数値表示・グラスモーフィズム効果） */
+    /* メトリックカード */
     .metric-card {
         background: rgba(255, 255, 255, 0.7);
         backdrop-filter: blur(20px);
@@ -130,7 +130,7 @@ st.markdown("""
     }
     .alert-card {
         padding: 14px 18px;
-        border-left: 4px solid #FF3B30; /* Apple Red */
+        border-left: 4px solid #FF3B30;
         background-color: rgba(255, 59, 48, 0.05);
         border-radius: 12px;
         margin-bottom: 10px;
@@ -407,9 +407,11 @@ with tab1:
 # ------------------------------------------
 with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
-    st.markdown('<div class="shortcut-guide">⌨️ PCナビゲーション: <b>Tab</b> で順にフォーカス移動、<b>Enter</b> で送信が可能です</div>', unsafe_allow_html=True)
+    st.markdown('<div class="shortcut-guide">⌨️ 登録ボタンを押すと、入力欄とアップロードされた画像は自動で空（リセット）になります。</div>', unsafe_allow_html=True)
     with st.container(border=True):
+        # clear_on_submit=True で、送信後に自動で中身を空っぽにします
         with st.form("manual_entry_form", clear_on_submit=True):
+            m_file = st.file_uploader("📄 評価シート画像 (任意)", type=["jpg", "png", "pdf"])
             c1, c2 = st.columns(2)
             with c1:
                 m_clinic = st.text_input("🏥 医院名 (必須)", key="m_c")
@@ -435,8 +437,8 @@ with tab2:
                         "completion_date": m_date.isoformat(), "sheet_type": m_stype,
                         "restoration_type": m_type, "material": m_material,
                         "tooth_position": m_pos, "contact": m_con, "bite": m_bit, "fit": m_fit, "comments": m_com
-                    })
-                    st.toast("手動登録が完了しました！", icon="✅")
+                    }, file_obj=m_file) # アップロードされた画像も保存
+                    st.toast("手動登録が完了しました！入力欄はリセットされました。", icon="✅")
 
 # ------------------------------------------
 # Tab 3: 分析ダッシュボード
@@ -450,16 +452,19 @@ with tab3:
             df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce')
             
             with st.container(border=True):
-                cf1, cf2, cf3, cf4 = st.columns(4)
-                s_c = cf1.selectbox("🏥 医院で絞り込み", ["すべて"] + list(df["clinic_name"].dropna().unique()))
-                s_st = cf2.selectbox("📄 シート種別", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
-                s_p = cf3.selectbox("📅 期間で絞り込み", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
-                s_m = cf4.selectbox("💎 材料で絞り込み", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
+                cf1, cf2, cf3, cf4, cf5 = st.columns(5) # ★5つのフィルターに拡張
+                s_c = cf1.selectbox("🏥 医院", ["すべて"] + list(df["clinic_name"].dropna().unique()))
+                s_st = cf2.selectbox("📄 シート", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
+                s_p = cf3.selectbox("📅 期間", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
+                s_m = cf4.selectbox("💎 材料", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
+                # ★追加：種別（クラウン・インレー等）での絞り込み
+                s_r = cf5.selectbox("🦷 種別", ["すべて"] + list(df.get("restoration_type", pd.Series([""])).dropna().unique()))
             
             f_df = df.copy()
             if s_c != "すべて": f_df = f_df[f_df["clinic_name"] == s_c]
             if s_st != "すべて" and "sheet_type" in f_df.columns: f_df = f_df[f_df["sheet_type"] == s_st]
             if s_m != "すべて" and "material" in f_df.columns: f_df = f_df[f_df["material"] == s_m]
+            if s_r != "すべて" and "restoration_type" in f_df.columns: f_df = f_df[f_df["restoration_type"] == s_r]
             
             p_map = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
             if s_p in p_map: f_df = f_df[f_df['completion_date'] >= (pd.Timestamp.today() - pd.DateOffset(months=p_map[s_p]))]
@@ -475,7 +480,6 @@ with tab3:
             
             def render_metric(label, mean_val, opt_rate):
                 if mean_val == 0: return f'<div class="metric-card"><p style="font-weight:bold; color: #1D1D1F;">{label}</p><h2 style="color: #1D1D1F;">- %</h2></div>'
-                # Apple風のカラーリング (Green, Orange, Red)
                 color = "#34C759" if opt_rate >= 80 else ("#FF9500" if opt_rate >= 50 else "#FF3B30")
                 return f"""
                 <div class="metric-card">
@@ -531,7 +535,8 @@ with tab3:
                 with st.spinner("AIがデータを分析中..."):
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                     dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
-                    prm = f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
+                    # ★AIへのプロンプトにも種別条件を追加
+                    prm = f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
                     
                     res_ai = None
                     c = genai.Client(api_key=KEY)
@@ -552,7 +557,6 @@ with tab3:
                     st.markdown("**📈 月別推移（品質トレンド）**")
                     if len(f_df) > 0:
                         trend_df = f_df.assign(month=f_df['completion_date'].dt.to_period('M').astype(str)).groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
-                        # グラフの色合いもApple風に変更
                         fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5], color_discrete_sequence=['#007AFF', '#5AC8FA', '#34C759'])
                         fig_line.add_hline(y=3.0, line_dash="dash", line_color="#8E8E93", annotation_text="適正値 (3.0)")
                         fig_line.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
@@ -568,7 +572,6 @@ with tab3:
                             for col in ['contact', 'bite', 'fit']
                             for score, count in f_df[col].value_counts().reindex([1,2,3,4,5], fill_value=0).items()
                         ]
-                        # スコアの色分けをAppleのシグナルカラーに
                         apple_colors = {'1': '#007AFF', '2': '#5AC8FA', '3': '#34C759', '4': '#FF9500', '5': '#FF3B30'}
                         fig_dist = px.bar(pd.DataFrame(dist_data), x='評価項目', y='件数', color='スコア', color_discrete_map=apple_colors, barmode='stack', text='割合')
                         fig_dist.update_traces(textposition='inside', textfont_size=16)
@@ -597,10 +600,10 @@ with tab3:
                 st.markdown(f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #007AFF; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);">📥 医院向けレポートを出力 (HTML)</a>', unsafe_allow_html=True)
 
 # ------------------------------------------
-# Tab 4: 履歴・管理
+# Tab 4: 履歴・管理 (★一括編集機能にアップデート)
 # ------------------------------------------
 with tab4:
-    st.markdown("### 📋 保存済みデータの管理")
+    st.markdown("### 📋 保存済みデータの管理・編集")
     if db:
         res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
         if res.data:
@@ -615,54 +618,62 @@ with tab4:
             if q:
                 df = df[df['patient_name'].astype(str).str.contains(q, na=False) | df['clinic_name'].astype(str).str.contains(q, na=False)]
 
-            display_cols = [c for c in ['completion_date', 'sheet_type', 'clinic_name', 'patient_name', 'restoration_type', 'material', 'contact', 'bite', 'fit'] if c in df.columns]
-            st.dataframe(df[display_cols], use_container_width=True)
-            
             st.markdown("---")
-            st.markdown("#### 📝 データの編集")
-            edit_map = {f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様 ({row['completion_date']})": row for _, row in df.iterrows()}
-            selected_edit_label = st.selectbox("編集するデータ", ["選択してください"] + list(edit_map.keys()))
+            st.markdown("#### 📝 データの一括編集（Excelのように直接書き換え）")
+            st.info("表のセルを直接クリックして編集できます。右にスクロールして全項目を確認できます。編集後、下の「変更を保存」ボタンを押してください。")
             
-            if selected_edit_label != "選択してください":
-                target_row = edit_map[selected_edit_label]
-                with st.container(border=True):
-                    img_url = target_row.get('image_url')
-                    if img_url:
-                        if ".pdf" in img_url.lower():
-                            st.markdown(f'<iframe src="{img_url}" width="100%" height="450" style="border: 1px solid #E5E5EA; border-radius: 12px;"></iframe>', unsafe_allow_html=True)
-                        else:
-                            st.image(img_url, use_container_width=True, caption="評価シート画像")
-                        
-                    with st.form("edit_form"):
-                        col_e1, col_e2 = st.columns(2)
-                        with col_e1:
-                            e_clinic = st.text_input("医院名", value=str(target_row.get('clinic_name') or ""))
-                            e_patient = st.text_input("患者名", value=str(target_row.get('patient_name') or ""))
-                            e_slip = st.text_input("伝票番号", value=str(target_row.get('slip_number') or ""))
-                            try: e_date_val = date.fromisoformat(str(target_row.get('completion_date'))[:10])
-                            except: e_date_val = date.today()
-                            e_date = st.date_input("完成日", value=e_date_val)
+            # 編集しやすいように列を整理
+            edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments']
+            df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
+            
+            edited_df = st.data_editor(
+                df_for_edit,
+                use_container_width=True,
+                hide_index=True,
+                key="bulk_edit_editor",
+                disabled=["id"], # IDだけはシステム用なので編集不可
+                column_config={
+                    "id": st.column_config.NumberColumn("ID", width="small"),
+                    "completion_date": st.column_config.DateColumn("📅 完成日"),
+                    "clinic_name": st.column_config.TextColumn("🏥 医院名", required=True),
+                    "patient_name": st.column_config.TextColumn("👤 患者名", required=True),
+                    "slip_number": st.column_config.TextColumn("📝 伝票番号"),
+                    "sheet_type": st.column_config.SelectboxColumn("📄 シート種別", options=SHEET_TYPE_LIST),
+                    "restoration_type": st.column_config.SelectboxColumn("🦷 種別", options=TYPE_LIST),
+                    "material": st.column_config.SelectboxColumn("💎 材料", options=MATERIAL_LIST),
+                    "tooth_position": st.column_config.TextColumn("📍 部位"),
+                    "contact": st.column_config.NumberColumn("コンタクト", min_value=1, max_value=5),
+                    "bite": st.column_config.NumberColumn("バイト", min_value=1, max_value=5),
+                    "fit": st.column_config.NumberColumn("適合", min_value=1, max_value=5),
+                    "comments": st.column_config.TextColumn("💬 コメント"),
+                },
+                height=500
+            )
+
+            if st.button("💾 編集内容を一括保存", type="primary"):
+                # ユーザーが編集した箇所（差分）だけを抽出して保存する
+                changes = st.session_state["bulk_edit_editor"].get("edited_rows", {})
+                if changes:
+                    with st.spinner("データベースを更新中..."):
+                        for row_idx, col_changes in changes.items():
+                            row_id = int(df_for_edit.iloc[row_idx]['id'])
                             
-                            st_val = str(target_row.get('sheet_type') or "セパレートレス模型")
-                            e_stype = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, index=SHEET_TYPE_LIST.index(st_val) if st_val in SHEET_TYPE_LIST else 0)
-                            
-                        with col_e2:
-                            e_type = st.selectbox("種別", TYPE_LIST, index=TYPE_LIST.index(target_row.get('restoration_type')) if target_row.get('restoration_type') in TYPE_LIST else 0)
-                            e_material = st.selectbox("材料", MATERIAL_LIST, index=MATERIAL_LIST.index(target_row.get('material')) if target_row.get('material') in MATERIAL_LIST else 0)
-                            e_pos = st.text_input("部位", value=str(target_row.get('tooth_position') or ""))
-                            e_con = st.slider("コンタクト", 1, 5, safe_int(target_row.get('contact')))
-                            e_bit = st.slider("バイト", 1, 5, safe_int(target_row.get('bite')))
-                            e_fit = st.slider("適合", 1, 5, safe_int(target_row.get('fit')))
-                        e_com = st.text_area("コメント", value=str(target_row.get('comments') or ""))
-                        
-                        if st.form_submit_button("🔄 変更を保存する", type="primary"):
-                            db.table("evaluations").update({
-                                "clinic_name": e_clinic, "patient_name": e_patient, "slip_number": e_slip,
-                                "completion_date": e_date.isoformat(), "sheet_type": e_stype,
-                                "restoration_type": e_type, "material": e_material,
-                                "tooth_position": e_pos, "contact": e_con, "bite": e_bit, "fit": e_fit, "comments": e_com
-                            }).eq("id", target_row['id']).execute()
-                            st.success("データを更新しました！画面を再読み込みしてください。")
+                            update_data = {}
+                            for col_name, new_val in col_changes.items():
+                                # 日付型の場合は文字列に変換してDBへ
+                                if col_name == 'completion_date' and new_val is not None:
+                                    update_data[col_name] = str(new_val)[:10]
+                                else:
+                                    update_data[col_name] = new_val
+                                    
+                            if update_data:
+                                db.table("evaluations").update(update_data).eq("id", row_id).execute()
+                                
+                    st.success(f"🎉 {len(changes)}件のデータを一括更新しました！画面を再読み込みします。")
+                    time.sleep(1.5)
+                    st.rerun()
+                else:
+                    st.warning("変更されたデータはありません。")
 
             st.markdown("---")
             with st.expander("🔧 既存データのシート種別を一括更新", expanded=False):
