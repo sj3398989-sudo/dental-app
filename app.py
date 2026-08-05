@@ -1,26 +1,4 @@
 import os
-
-# ==========================================
-# ★ Streamlitの「テーマカラー（赤色）」を根本から青色に変更する自動設定
-# ==========================================
-def setup_theme():
-    os.makedirs(".streamlit", exist_ok=True)
-    theme_file = ".streamlit/config.toml"
-    if not os.path.exists(theme_file):
-        with open(theme_file, "w") as f:
-            f.write("""
-[theme]
-primaryColor = "#007AFF"
-backgroundColor = "#F5F5F7"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#1D1D1F"
-font = "sans serif"
-""")
-        return True
-    return False
-
-is_new_theme_created = setup_theme()
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -36,36 +14,23 @@ import base64
 import re
 
 # ==========================================
-# 1. アプリケーション初期設定 & CSS (UI/UX改善)
+# 1. アプリケーション初期設定 & CSS
 # ==========================================
 st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
-if is_new_theme_created:
-    st.info("🎨 新しいテーマカラー（ブルー）を設定しました。完全に反映させるため、ブラウザを「再読み込み（F5キー）」してください。")
-
-# 洗練されたApple風UIスタイルの追加調整
+# 洗練されたUIスタイル
 st.markdown("""
 <style>
     .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
     #MainMenu, header, footer {visibility: hidden;}
     .custom-title { font-size: clamp(1.8rem, 5vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; color: #1D1D1F; margin-bottom: 20px; }
-    
-    /* ボタンのホバーアクション & アニメーション強化 */
     .stButton>button[kind="primary"] { border-radius: 12px !important; font-weight: 600 !important; font-size: 15px !important; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2) !important; transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important; }
     .stButton>button[kind="primary"]:hover { transform: translateY(-1px) scale(0.99) !important; box-shadow: 0 6px 16px rgba(0, 122, 255, 0.3) !important; }
-    
-    /* コンテナの角丸と立体感 */
     div[data-testid="stVerticalBlock"] > div[style*="border"] { border-radius: 18px !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important; padding: 24px !important; border: 1px solid rgba(0,0,0,0.06) !important; background-color: #FFFFFF !important; }
     .streamlit-expanderHeader { border-radius: 14px !important; border: 1px solid #E5E5EA !important; font-weight: 600 !important; background-color: #FFFFFF !important; }
-    
-    /* 入力フォームの美質化 */
     input, select, textarea { border-radius: 10px !important; transition: all 0.2s ease !important; }
-    
-    /* メトリックカード */
     .metric-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.6); text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.04); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
-    
-    /* ガイド・アラート類 */
     .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
@@ -83,6 +48,7 @@ TYPE_LIST = ["クラウン（単冠）", "ブリッジ", "インレー", "イン
 KEY = st.secrets.get("GEMINI_API_KEY")
 URL = st.secrets.get("SUPABASE_URL")
 S_KEY = st.secrets.get("SUPABASE_KEY")
+STORAGE_BUCKET = "sheet_images"
 
 @st.cache_resource
 def get_db():
@@ -93,43 +59,44 @@ def get_db():
 db = get_db()
 
 # ==========================================
-# 3. 全体データの1回のみ一括取得 (無駄を排除)
-# ==========================================
-global_df = pd.DataFrame()
-if db:
-    try:
-        res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
-        if res.data:
-            temp_df = pd.DataFrame(res.data)
-            temp_df['completion_date'] = pd.to_datetime(temp_df['completion_date'], errors='coerce').dt.date
-            for col in ['contact', 'bite', 'fit', 'id']:
-                if col in temp_df.columns:
-                    temp_df[col] = pd.to_numeric(temp_df[col], errors='coerce')
-            global_df = temp_df
-    except Exception as e:
-        st.error(f"データ読み込みエラー: {e}")
-
-# ==========================================
-# 4. 共通・ヘルパー関数
+# 3. 共通・ヘルパー関数 (パフォーマンス & セキュリティ)
 # ==========================================
 def safe_int(val, default=3):
     try: return max(1, min(5, int(float(val))))
     except (ValueError, TypeError): return default
 
-# ★ 修正箇所：使用するAPIモデルを最新の3.6→3.5→3.5Lite→3の順に更新しました
-def call_gemini_with_fallback(contents, prm=None, ai_config=None):
+def prep_dataframe(df):
+    if not df.empty:
+        df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce').dt.date
+        for col in ['contact', 'bite', 'fit', 'id']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+# ★ キャッシュを導入し、DB通信負荷を激減
+@st.cache_data(ttl=600)
+def fetch_evaluations():
+    if not db: return pd.DataFrame()
+    try:
+        res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
+        if res.data:
+            return prep_dataframe(pd.DataFrame(res.data))
+    except Exception as e:
+        st.error(f"データ読み込みエラー: {e}")
+    return pd.DataFrame()
+
+# キャッシュを手動クリアするためのヘルパー
+def clear_db_cache():
+    fetch_evaluations.clear()
+
+# ★ AI呼び出し関数を明示的かつ安全な設計に修正
+def call_gemini_with_fallback(prompt_text, image_part=None, ai_config=None):
     if not KEY: raise ValueError("GEMINI_API_KEY が設定されていません。")
     client = genai.Client(api_key=KEY)
+    models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash']
     
-    # ここで最新モデルを指定します
-    models = [
-        'gemini-3.6-flash',
-        'gemini-3.5-flash',
-        'gemini-3.5-flash-lite',
-        'gemini-3-flash'
-    ]
+    payload = [image_part, prompt_text] if image_part else prompt_text
     
-    payload = [contents, prm] if prm else contents
     last_exception = None
     for idx, model in enumerate(models):
         try: return client.models.generate_content(model=model, contents=payload, config=ai_config)
@@ -139,13 +106,14 @@ def call_gemini_with_fallback(contents, prm=None, ai_config=None):
             else: raise last_exception
     return None
 
+# ★ Security対策: Public URLを廃止し、DBにはファイルパスだけを保存する
 def upload_file_to_storage(file_obj, suffix_idx):
     if not file_obj or not db: return None
     try:
         f_b = file_obj.getvalue()
         is_pdf = "pdf" in file_obj.type
         ext, mime = ("pdf", "application/pdf") if is_pdf else ("jpg", "image/jpeg")
-        f_nm = f"{int(time.time())}_{suffix_idx}.{ext}"
+        file_path = f"{int(time.time())}_{suffix_idx}.{ext}"
         
         if not is_pdf:
             try:
@@ -158,24 +126,38 @@ def upload_file_to_storage(file_obj, suffix_idx):
                 f_b = buf.getvalue()
             except Exception: pass
             
-        db.storage.from_("sheet_images").upload(f_nm, f_b, {"content-type": mime})
-        return db.storage.from_("sheet_images").get_public_url(f_nm)
+        db.storage.from_(STORAGE_BUCKET).upload(file_path, f_b, {"content-type": mime})
+        return file_path # URLではなくファイルパスを返す
     except Exception as e:
         st.warning(f"画像アップロードスキップ: {e}")
         return None
 
-def save_single_evaluation(d, file_obj=None):
+# ★ Security対策: パスから1時間限定の Signed URL を発行して表示する
+def get_signed_url(file_path):
+    if not file_path or not db: return None
     try:
-        img_url = upload_file_to_storage(file_obj, 0)
+        res = db.storage.from_(STORAGE_BUCKET).create_signed_url(file_path, 3600)
+        return res.get('signedURL', None)
+    except Exception:
+        return None
+
+# ★ 孤児ファイル対策: DBエラー時のロールバック処理追加
+def save_single_evaluation(d, file_obj=None):
+    img_path = upload_file_to_storage(file_obj, 0)
+    try:
         db.table("evaluations").insert({
             "clinic_name": d.get("clinic_name"), "patient_name": d.get("patient_name"),
             "slip_number": d.get("slip_number"), "completion_date": d.get("completion_date"),
             "sheet_type": d.get("sheet_type", "セパレートレス模型"), "restoration_type": d.get("restoration_type"),
             "material": d.get("material"), "tooth_position": d.get("tooth_position"),
             "contact": safe_int(d.get("contact")), "bite": safe_int(d.get("bite")), "fit": safe_int(d.get("fit")),
-            "comments": d.get("comments", ""), "image_url": img_url
+            "comments": d.get("comments", ""), "image_url": img_path
         }).execute()
-    except Exception as e: st.error(f"データベース登録エラー: {e}")
+        clear_db_cache()
+    except Exception as e:
+        st.error(f"データベース登録エラー: {e}")
+        if img_path: # ロールバック（ゴミファイル削除）
+            db.storage.from_(STORAGE_BUCKET).remove([img_path])
 
 def display_file_preview(file_obj):
     if not file_obj:
@@ -188,9 +170,8 @@ def display_file_preview(file_obj):
         try: st.image(file_obj.getvalue(), use_container_width=True)
         except Exception: st.warning("画像を表示できません")
 
-
 # ==========================================
-# 5. 画面描画 (Tabs)
+# 4. 画面描画 (Tabs)
 # ==========================================
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = "uploader_" + str(time.time())
@@ -207,7 +188,7 @@ with tab1:
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
-            prm = (
+            prompt_text = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
                 "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
                 "2. 製品名からの種別・材料の判定ルール:\n"
@@ -246,7 +227,8 @@ with tab1:
                             img = ImageEnhance.Contrast(img).enhance(1.2)
                             cp = img
                         
-                        res = call_gemini_with_fallback(cp, prm, ai_config)
+                        # 明示的に image と prompt_text を分けて渡す
+                        res = call_gemini_with_fallback(prompt_text=prompt_text, image_part=cp, ai_config=ai_config)
                         
                         if res and res.text:
                             parsed = json.loads(res.text.strip())
@@ -349,9 +331,14 @@ with tab1:
             elif db:
                 with st.spinner("データベースへ一括保存中... (超高速化)"):
                     insert_data = []
+                    uploaded_paths = [] # ★孤児ファイルロールバック用リスト
+                    
                     for idx, row in edited_df.iterrows():
                         f_idx = row.get("_f_idx")
                         file_obj = f_list[int(f_idx)] if pd.notna(f_idx) and int(f_idx) < len(f_list) else None
+                        
+                        img_path = upload_file_to_storage(file_obj, idx)
+                        if img_path: uploaded_paths.append(img_path)
                         
                         insert_data.append({
                             "clinic_name": str(row.get("医院名", "")), "patient_name": str(row.get("患者名", "")),
@@ -362,18 +349,23 @@ with tab1:
                             "tooth_position": str(row.get("部位", "")),
                             "contact": safe_int(row.get("コンタクト")), "bite": safe_int(row.get("バイト")), "fit": safe_int(row.get("適合")),
                             "comments": str(row.get("コメント", "")),
-                            "image_url": upload_file_to_storage(file_obj, idx)
+                            "image_url": img_path
                         })
                     
                     if insert_data:
-                        try: db.table("evaluations").insert(insert_data).execute()
-                        except Exception as e: st.error(f"一括保存エラー: {e}")
-                            
-                del st.session_state["r_list"], st.session_state["f_list"]
-                st.session_state["uploader_key"] = "uploader_" + str(time.time())
-                st.success("🎉 データの一括保存が完了しました！")
-                time.sleep(1.5)
-                st.rerun()
+                        try:
+                            db.table("evaluations").insert(insert_data).execute()
+                            clear_db_cache()
+                            del st.session_state["r_list"], st.session_state["f_list"]
+                            st.session_state["uploader_key"] = "uploader_" + str(time.time())
+                            st.success("🎉 データの一括保存が完了しました！")
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"一括保存エラー: {e}")
+                            # ロールバック処理
+                            for p in uploaded_paths:
+                                db.storage.from_(STORAGE_BUCKET).remove([p])
 
 # ------------------------------------------
 # Tab 2: 手動登録
@@ -416,6 +408,8 @@ with tab2:
 # ------------------------------------------
 with tab3:
     st.markdown("### 📊 品質分析ダッシュボード")
+    global_df = fetch_evaluations()
+    
     if not global_df.empty:
         df = global_df.copy()
         
@@ -491,14 +485,15 @@ with tab3:
                 cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                 dic = f_df[[c for c in cols if c in f_df.columns]].astype(str).to_dict(orient='records')
                 
-                prm = (
+                # ★ 修正: 分析対象データを明示的にテキストとして渡す
+                prompt_text = (
                     f"【重要：必ず日本語で回答してください】\n"
                     f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。\n"
                     "評価スコアは「3が適正」「1が弱い（緩い・低い）」「5がきついの前提で、プロの歯科技工士の視点から考察・分析を行ってください。\n"
                     f"データ:\n{dic}"
                 )
                 try:
-                    res_ai = call_gemini_with_fallback(prm)
+                    res_ai = call_gemini_with_fallback(prompt_text=prompt_text)
                     st.info(res_ai.text if res_ai else "分析を完了できませんでした。")
                 except Exception as e: st.error(f"分析エラー: {e}")
 
@@ -625,6 +620,7 @@ with tab3:
 # ------------------------------------------
 with tab4:
     st.markdown("### 📋 保存済みデータの管理・編集")
+    global_df = fetch_evaluations()
     if not global_df.empty:
         df = global_df.copy()
         
@@ -687,6 +683,7 @@ with tab4:
                             target_ids = selected_rows["id"].tolist()
                             for tid in target_ids:
                                 db.table("evaluations").update(update_data).eq("id", int(tid)).execute()
+                        clear_db_cache()
                         st.success("一括更新が完了しました！画面を再読み込みします。")
                         time.sleep(1.5)
                         st.rerun()
@@ -711,6 +708,7 @@ with tab4:
                         if update_data:
                             db.table("evaluations").update(update_data).eq("id", row_id).execute()
                             
+                clear_db_cache()
                 st.success(f"🎉 編集内容を更新しました！画面を再読み込みします。")
                 time.sleep(1.5)
                 st.rerun()
@@ -726,9 +724,12 @@ with tab4:
                 if len(old_df) > 0 and st.button("⚠️ 対象の画像を削除する"):
                     with st.spinner("画像データをクリーンアップ中..."):
                         for _, row in old_df.iterrows():
-                            file_name = row['image_url'].split('/')[-1]
-                            db.storage.from_("sheet_images").remove([file_name])
-                            db.table("evaluations").update({"image_url": None}).eq("id", row['id']).execute()
+                            # 保存されているパスを取り出して削除
+                            file_path = row['image_url']
+                            if file_path:
+                                db.storage.from_(STORAGE_BUCKET).remove([file_path])
+                                db.table("evaluations").update({"image_url": None}).eq("id", row['id']).execute()
+                        clear_db_cache()
                         st.success("🎉 古い画像の削除が完了しました！")
                         time.sleep(1.5)
                         st.rerun()
@@ -739,6 +740,7 @@ with tab4:
             selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
             if selected_ids and st.button(f"⚠️ 選択した {len(selected_ids)} 件のデータを完全に削除する"):
                 for tid in selected_ids: db.table("evaluations").delete().eq("id", tid).execute()
+                clear_db_cache()
                 st.success("削除完了しました！")
                 time.sleep(1)
                 st.rerun()
@@ -757,6 +759,7 @@ with tab4:
                     with st.spinner("データをデータベースに復元中..."):
                         if records: db.table("evaluations").insert(records).execute()
                             
+                    clear_db_cache()
                     st.success(f"🎉 {len(records)} 件のデータを無事に復元しました！画面を再読み込みします。")
                     time.sleep(2)
                     st.rerun()
