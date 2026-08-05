@@ -1,3 +1,26 @@
+import os
+
+# ==========================================
+# ★ Streamlitの「テーマカラー（赤色）」を根本から青色に変更する自動設定
+# ==========================================
+def setup_theme():
+    os.makedirs(".streamlit", exist_ok=True)
+    theme_file = ".streamlit/config.toml"
+    if not os.path.exists(theme_file):
+        with open(theme_file, "w") as f:
+            f.write("""
+[theme]
+primaryColor = "#007AFF"
+backgroundColor = "#F5F5F7"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1D1D1F"
+font = "sans serif"
+""")
+        return True
+    return False
+
+is_new_theme_created = setup_theme()
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -17,20 +40,32 @@ import re
 # ==========================================
 st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
-# ★ タブをいじるCSSは全て削除し、もっとも安定したStreamlit標準の表示に戻しました。
+if is_new_theme_created:
+    st.info("🎨 新しいテーマカラー（ブルー）を設定しました。完全に反映させるため、ブラウザを「再読み込み（F5キー）」してください。")
+
+# テーマ設定で色を管理するため、余計なCSSは削ぎ落とし、カードの角丸など最小限の装飾のみ残しています
 st.markdown("""
 <style>
-    .stApp { background-color: #F5F5F7 !important; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
+    .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
     #MainMenu, header, footer {visibility: hidden;}
     .custom-title { font-size: clamp(1.8rem, 5vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; color: #1D1D1F; margin-bottom: 20px; }
-    .stButton>button[kind="primary"] { background-color: #007AFF !important; color: #FFFFFF !important; border: none !important; border-radius: 12px !important; padding: 0.6rem 1.2rem !important; font-weight: 600 !important; font-size: 15px !important; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25) !important; transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important; }
-    .stButton>button[kind="primary"]:hover { background-color: #0062CC !important; transform: scale(0.98) !important; box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2) !important; }
-    div[data-testid="stVerticalBlock"] > div[style*="border"] { background-color: #FFFFFF !important; border: 1px solid rgba(0,0,0,0.05) !important; border-radius: 18px !important; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04) !important; padding: 24px !important; }
-    .streamlit-expanderHeader { background-color: #FFFFFF !important; border-radius: 14px !important; border: 1px solid #E5E5EA !important; font-weight: 600 !important; color: #1D1D1F !important; }
-    input, select, textarea { background-color: #F2F2F7 !important; border: 1px solid transparent !important; border-radius: 10px !important; color: #1D1D1F !important; transition: all 0.2s ease !important; }
-    input:focus, select:focus, textarea:focus { background-color: #FFFFFF !important; border: 1px solid #007AFF !important; box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important; }
+    
+    /* ボタンのホバーアクション */
+    .stButton>button[kind="primary"] { border-radius: 12px !important; font-weight: 600 !important; font-size: 15px !important; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25) !important; transition: transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important; }
+    .stButton>button[kind="primary"]:hover { transform: scale(0.98) !important; box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2) !important; }
+    
+    /* コンテナの角丸と影 */
+    div[data-testid="stVerticalBlock"] > div[style*="border"] { border-radius: 18px !important; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04) !important; padding: 24px !important; border: 1px solid rgba(0,0,0,0.05) !important; }
+    .streamlit-expanderHeader { border-radius: 14px !important; border: 1px solid #E5E5EA !important; font-weight: 600 !important; }
+    
+    /* 入力フォームの角丸 */
+    input, select, textarea { border-radius: 10px !important; transition: all 0.2s ease !important; }
+    
+    /* メトリックカード */
     .metric-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.5); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.06); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
+    
+    /* ガイド類 */
     .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
@@ -139,7 +174,6 @@ def display_file_preview(file_obj):
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = "uploader_" + str(time.time())
 
-# ★ タブの表記も標準に戻しました（全角スペース等も除去）
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
