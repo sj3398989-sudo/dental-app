@@ -10,6 +10,7 @@ import io
 import time
 from datetime import date
 import base64
+import re  # ★ 正規表現（文字のパターン検知）を使うために追加
 
 # ==========================================
 # 1. アプリケーション初期設定 & CSS
@@ -155,14 +156,13 @@ with tab1:
             prm = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
                 "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
-                "2. 製品名からの種別・材料の判定ルール（製品名欄の記載から以下のルールで自動推測してください）:\n"
+                "2. 製品名からの種別・材料の判定ルール:\n"
                 "   - 「CAD冠」が含まれる場合 => material: CAD/CAM冠, restoration_type: クラウン（単冠）\n"
                 "   - 「CADIN」「CADインレー」「CADイン」が含まれる場合 => material: CAD/CAM冠, restoration_type: インレー\n"
                 "   - 「ZR」や「ジル」から始まる場合 => material: ジルコニア\n"
                 "   - 「ZR-IN」「ZRインレー」が含まれる場合 => material: ジルコニア, restoration_type: インレー\n"
                 "   - 「ZR-C」や「ZR-E」が含まれる場合 => material: ジルコニア, restoration_type: クラウン（単冠）\n"
-                "   - 【重要】材料がジルコニアと推測される場合で、部位（tooth_position）に「345」や「56」などのように数字が複数並んでいる（連なっている）場合は、restoration_type を基本的に「ブリッジ」としてください。\n"
-                f"   ※上記ルールに当てはまらない場合は、restoration_typeは {', '.join(TYPE_LIST)} から、materialは {', '.join(MATERIAL_LIST)} から最も近いものを選択。\n"
+                f"   ※上記に当てはまらない場合は、restoration_typeは {', '.join(TYPE_LIST)} から、materialは {', '.join(MATERIAL_LIST)} から最も近いものを選択。\n"
                 "3. スコアの抽出: 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
                 "4. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
                 "出力キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
@@ -199,7 +199,14 @@ with tab1:
                             parsed = json.loads(res.text.strip())
                             if isinstance(parsed, dict): parsed = [parsed]
                             for item in parsed:
-                                item["_f_idx"] = actual_idx 
+                                item["_f_idx"] = actual_idx
+                                
+                                # ★ 【追加】部位の文字列から「ブリッジ」を強制判定するルール
+                                tp = str(item.get("tooth_position", ""))
+                                # 数字が2桁以上連続している(345, 56等)、または数字と数字がハイフン・波線で繋がっている(3-5等)場合
+                                if re.search(r'\d{2,}', tp) or re.search(r'\d[-~]\d', tp):
+                                    item["restoration_type"] = "ブリッジ"
+                                
                                 r_list.append(item)
                     except Exception as e:
                         st.error(f"ファイル解析エラー ({f.name}): {e}")
@@ -231,7 +238,7 @@ with tab1:
             try: dt = date.fromisoformat(str(item.get("completion_date", ""))[:10])
             except: dt = date.today()
             formatted_data.append({
-                "✅ 選択": False,  # ★ チェックボックス用の列を追加
+                "✅ 選択": False,
                 "画像No": item.get("_f_idx", 0) + 1,
                 "医院名": item.get("clinic_name", ""), "患者名": item.get("patient_name", ""),
                 "伝票番号": item.get("slip_number", ""), "完成日": dt,
@@ -268,7 +275,6 @@ with tab1:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # ★ チェックを入れたものに対する一括変更パネル（AI一括側）
         selected_indices = edited_df[edited_df["✅ 選択"] == True].index.tolist()
         if len(selected_indices) > 0:
             st.markdown(f"**☑️ 選択した {len(selected_indices)} 件のデータを一括変更（保存前）**")
@@ -520,7 +526,6 @@ with tab4:
             
             edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments']
             df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
-            # ★ チェックボックス用の列を追加
             df_for_edit.insert(0, "✅ 選択", False)
             
             edited_df = st.data_editor(
@@ -545,7 +550,6 @@ with tab4:
                 height=500
             )
 
-            # ★ チェックを入れたものに対する一括変更パネル（保存済みデータ側）
             selected_rows = edited_df[edited_df["✅ 選択"] == True]
             if len(selected_rows) > 0:
                 st.markdown(f"**☑️ 選択した {len(selected_rows)} 件のデータを一括変更**")
@@ -582,7 +586,7 @@ with tab4:
                             row_id = int(df_for_edit.iloc[row_idx]['id'])
                             update_data = {}
                             for col_name, new_val in col_changes.items():
-                                if col_name == '✅ 選択': continue # 選択チェックはDBに保存しない
+                                if col_name == '✅ 選択': continue 
                                 if col_name == 'completion_date' and new_val is not None:
                                     update_data[col_name] = str(new_val)[:10]
                                 else:
