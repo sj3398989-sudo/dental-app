@@ -9,7 +9,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 from config import KEY, GEMINI_MODELS
 
-# ★ 厳密なJSON Schemaの定義 (AIはこの型の通りにしか返答できなくなる)
+# ★ 厳密なJSON Schemaの定義
 class EvaluationResult(BaseModel):
     clinic_name: str = Field(description="医院名")
     patient_name: str = Field(description="患者名")
@@ -32,6 +32,18 @@ def get_gemini_client():
     if not KEY: return None
     return genai.Client(api_key=KEY)
 
+# ★ 【修正】Tab3のAIダッシュボード分析で使う関数を復活！
+def call_gemini_with_fallback(prompt_text, image_part=None, ai_config=None):
+    client = get_gemini_client()
+    if not client: raise ValueError("GEMINI_API_KEY が設定されていません。")
+    payload = [image_part, prompt_text] if image_part else prompt_text
+    for idx, model in enumerate(GEMINI_MODELS):
+        try: return client.models.generate_content(model=model, contents=payload, config=ai_config)
+        except Exception as e:
+            if idx == len(GEMINI_MODELS) - 1: raise e
+            time.sleep(0.5)
+    return None
+
 def process_single_file(f, actual_idx, prompt_text):
     try:
         if "pdf" in f.type: cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
@@ -44,7 +56,6 @@ def process_single_file(f, actual_idx, prompt_text):
         client = get_gemini_client()
         if not client: raise ValueError("GEMINI_API_KEY が未設定です")
         
-        # ★ AIにSchemaを強制
         ai_config = types.GenerateContentConfig(
             temperature=0.0, 
             response_mime_type="application/json",
@@ -61,14 +72,12 @@ def process_single_file(f, actual_idx, prompt_text):
                 time.sleep(0.5)
 
         if res and res.text:
-            # Pydanticを使って受け取ったJSONを安全にパース・検証
             validated_data = EvaluationList.model_validate_json(res.text)
             parsed = [item.model_dump() for item in validated_data.evaluations]
             
             for item in parsed:
                 item["_f_idx"] = actual_idx
                 
-                # 日付変換
                 raw_date = str(item.get("raw_completion_date", "")).strip().replace('.', '/').replace('・', '/').replace('-', '/')
                 parts = re.split(r'/', raw_date)
                 dt_obj = date.today()
