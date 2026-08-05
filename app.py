@@ -1,20 +1,7 @@
 import os
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-from google import genai
-from google.genai import types
-from supabase import create_client
-from PIL import Image, ImageOps, ImageEnhance
-import json
-import io
-import time
-from datetime import date
-import base64
-import re
 
 # ==========================================
-# ★ Streamlitのテーマカラー自動設定
+# ★ Streamlitの「テーマカラー（赤色）」を根本から青色に変更する自動設定
 # ==========================================
 def setup_theme():
     os.makedirs(".streamlit", exist_ok=True)
@@ -34,26 +21,51 @@ font = "sans serif"
 
 is_new_theme_created = setup_theme()
 
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from google import genai
+from google.genai import types
+from supabase import create_client
+from PIL import Image, ImageOps, ImageEnhance
+import json
+import io
+import time
+from datetime import date
+import base64
+import re
+
 # ==========================================
-# 1. アプリケーション初期設定 & CSS
+# 1. アプリケーション初期設定 & CSS (UI/UX改善)
 # ==========================================
 st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
 if is_new_theme_created:
-    st.info("🎨 新しいテーマカラーを設定しました。完全に反映させるため、ブラウザを「再読み込み（F5キー）」してください。")
+    st.info("🎨 新しいテーマカラー（ブルー）を設定しました。完全に反映させるため、ブラウザを「再読み込み（F5キー）」してください。")
 
+# 洗練されたApple風UIスタイルの追加調整
 st.markdown("""
 <style>
     .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
     #MainMenu, header, footer {visibility: hidden;}
     .custom-title { font-size: clamp(1.8rem, 5vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; color: #1D1D1F; margin-bottom: 20px; }
+    
+    /* ボタンのホバーアクション & アニメーション強化 */
     .stButton>button[kind="primary"] { border-radius: 12px !important; font-weight: 600 !important; font-size: 15px !important; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2) !important; transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important; }
     .stButton>button[kind="primary"]:hover { transform: translateY(-1px) scale(0.99) !important; box-shadow: 0 6px 16px rgba(0, 122, 255, 0.3) !important; }
+    
+    /* コンテナの角丸と立体感 */
     div[data-testid="stVerticalBlock"] > div[style*="border"] { border-radius: 18px !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important; padding: 24px !important; border: 1px solid rgba(0,0,0,0.06) !important; background-color: #FFFFFF !important; }
     .streamlit-expanderHeader { border-radius: 14px !important; border: 1px solid #E5E5EA !important; font-weight: 600 !important; background-color: #FFFFFF !important; }
+    
+    /* 入力フォームの美質化 */
     input, select, textarea { border-radius: 10px !important; transition: all 0.2s ease !important; }
+    
+    /* メトリックカード */
     .metric-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.6); text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.04); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
+    
+    /* ガイド・アラート類 */
     .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
@@ -88,7 +100,6 @@ if db:
     try:
         res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
         if res.data:
-            # 取得したデータを使いやすい型に変換しておく
             temp_df = pd.DataFrame(res.data)
             temp_df['completion_date'] = pd.to_datetime(temp_df['completion_date'], errors='coerce').dt.date
             for col in ['contact', 'bite', 'fit', 'id']:
@@ -105,10 +116,19 @@ def safe_int(val, default=3):
     try: return max(1, min(5, int(float(val))))
     except (ValueError, TypeError): return default
 
+# ★ 修正箇所：使用するAPIモデルを最新の3.6→3.5→3.5Lite→3の順に更新しました
 def call_gemini_with_fallback(contents, prm=None, ai_config=None):
     if not KEY: raise ValueError("GEMINI_API_KEY が設定されていません。")
     client = genai.Client(api_key=KEY)
-    models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash']
+    
+    # ここで最新モデルを指定します
+    models = [
+        'gemini-3.6-flash',
+        'gemini-3.5-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3-flash'
+    ]
+    
     payload = [contents, prm] if prm else contents
     last_exception = None
     for idx, model in enumerate(models):
@@ -484,7 +504,6 @@ with tab3:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ★ レイアウト変更: スコア分布を上に、月別推移をエキスパンダーで下に
         with st.container(border=True):
             st.markdown("**📊 スコア分布**")
             if len(f_df) > 0:
@@ -498,23 +517,21 @@ with tab3:
                 fig_dist = px.bar(pd.DataFrame(dist_data), x='評価項目', y='件数', color='スコア', color_discrete_map=apple_colors, barmode='stack', text='割合')
                 fig_dist.update_traces(textposition='inside', textfont_size=16)
                 fig_dist.update_layout(
-                    dragmode=False, # ★誤作動防止: スクロール時のドラッグ無効化
+                    dragmode=False,
                     xaxis=dict(tickfont=dict(size=16, color="#1D1D1F", weight="bold"), title=""), 
                     yaxis=dict(title="件数"), 
                     plot_bgcolor='rgba(0,0,0,0)', 
                     paper_bgcolor='rgba(0,0,0,0)'
                 )
-                # config={'displayModeBar': False} で不要なツールバーを隠してスッキリ
                 st.plotly_chart(fig_dist, use_container_width=True, config={'displayModeBar': False})
 
-        # ★ 月別推移グラフは折りたたんでスッキリさせる
         with st.expander("📈 月別推移（品質トレンド）を開く", expanded=False):
             if len(f_df) > 0:
                 trend_df = f_df.assign(month=pd.to_datetime(f_df['completion_date']).dt.to_period('M').astype(str)).groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
                 fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5], color_discrete_sequence=['#007AFF', '#5AC8FA', '#34C759'])
                 fig_line.add_hline(y=3.0, line_dash="dash", line_color="#8E8E93", annotation_text="適正値 (3.0)")
                 fig_line.update_layout(
-                    dragmode=False, # ★誤作動防止: スクロール時のドラッグ無効化
+                    dragmode=False,
                     plot_bgcolor='rgba(0,0,0,0)', 
                     paper_bgcolor='rgba(0,0,0,0)'
                 )
