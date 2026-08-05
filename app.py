@@ -17,8 +17,7 @@ import re
 # ==========================================
 st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
-# タブ周りのCSSを削除し、Streamlitの標準仕様（最も安定したレイアウト）にお任せします。
-# その他のカードやボタン、入力フォームなどは美しいApple風を維持しています。
+# ★ タブをいじるCSSは全て削除し、もっとも安定したStreamlit標準の表示に戻しました。
 st.markdown("""
 <style>
     .stApp { background-color: #F5F5F7 !important; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
@@ -32,7 +31,6 @@ st.markdown("""
     input:focus, select:focus, textarea:focus { background-color: #FFFFFF !important; border: 1px solid #007AFF !important; box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important; }
     .metric-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.5); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.06); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
-    
     .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
@@ -141,7 +139,7 @@ def display_file_preview(file_obj):
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = "uploader_" + str(time.time())
 
-# Streamlit標準のタブ（一番崩れず綺麗に表示されます）
+# ★ タブの表記も標準に戻しました（全角スペース等も除去）
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
