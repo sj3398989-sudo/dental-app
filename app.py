@@ -12,13 +12,14 @@ import time
 from datetime import date
 import base64
 import re
+import uuid
+import concurrent.futures
 
 # ==========================================
 # 1. アプリケーション初期設定 & CSS
 # ==========================================
 st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
-# 洗練されたUIスタイル
 st.markdown("""
 <style>
     .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
@@ -50,6 +51,11 @@ URL = st.secrets.get("SUPABASE_URL")
 S_KEY = st.secrets.get("SUPABASE_KEY")
 STORAGE_BUCKET = "sheet_images"
 
+# ★モデル指定の定数化
+DEFAULT_MODEL = "gemini-3.5-flash"
+FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3-flash"]
+GEMINI_MODELS = [DEFAULT_MODEL] + FALLBACK_MODELS
+
 @st.cache_resource
 def get_db():
     try: return create_client(URL, S_KEY) if URL and S_KEY else None
@@ -58,8 +64,13 @@ def get_db():
         return None
 db = get_db()
 
+@st.cache_resource
+def get_gemini_client():
+    if not KEY: return None
+    return genai.Client(api_key=KEY)
+
 # ==========================================
-# 3. 共通・ヘルパー関数 (パフォーマンス & セキュリティ)
+# 3. 共通・ヘルパー関数
 # ==========================================
 def safe_int(val, default=3):
     try: return max(1, min(5, int(float(val))))
@@ -73,7 +84,6 @@ def prep_dataframe(df):
                 df[col] = pd.to_numeric(df[col], errors='coerce')
     return df
 
-# ★ キャッシュを導入し、DB通信負荷を激減
 @st.cache_data(ttl=600)
 def fetch_evaluations():
     if not db: return pd.DataFrame()
@@ -85,35 +95,37 @@ def fetch_evaluations():
         st.error(f"データ読み込みエラー: {e}")
     return pd.DataFrame()
 
-# キャッシュを手動クリアするためのヘルパー
 def clear_db_cache():
     fetch_evaluations.clear()
 
-# ★ AI呼び出し関数を明示的かつ安全な設計に修正
 def call_gemini_with_fallback(prompt_text, image_part=None, ai_config=None):
-    if not KEY: raise ValueError("GEMINI_API_KEY が設定されていません。")
-    client = genai.Client(api_key=KEY)
-    models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash']
+    client = get_gemini_client()
+    if not client: raise ValueError("GEMINI_API_KEY が設定されていません。")
     
     payload = [image_part, prompt_text] if image_part else prompt_text
     
     last_exception = None
-    for idx, model in enumerate(models):
+    for idx, model in enumerate(GEMINI_MODELS):
         try: return client.models.generate_content(model=model, contents=payload, config=ai_config)
         except Exception as e:
             last_exception = e
-            if idx < len(models) - 1: time.sleep(0.5 * (idx + 1))
+            if idx < len(GEMINI_MODELS) - 1: time.sleep(0.5 * (idx + 1))
             else: raise last_exception
     return None
 
-# ★ Security対策: Public URLを廃止し、DBにはファイルパスだけを保存する
-def upload_file_to_storage(file_obj, suffix_idx):
+def clean_and_parse_json(text):
+    clean_text = text.strip()
+    clean_text = re.sub(r"^```(?:json)?\n?", "", clean_text)
+    clean_text = re.sub(r"\n?```$", "", clean_text)
+    return json.loads(clean_text)
+
+def upload_file_to_storage(file_obj):
     if not file_obj or not db: return None
     try:
         f_b = file_obj.getvalue()
         is_pdf = "pdf" in file_obj.type
         ext, mime = ("pdf", "application/pdf") if is_pdf else ("jpg", "image/jpeg")
-        file_path = f"{int(time.time())}_{suffix_idx}.{ext}"
+        file_path = f"{uuid.uuid4()}.{ext}" 
         
         if not is_pdf:
             try:
@@ -127,37 +139,17 @@ def upload_file_to_storage(file_obj, suffix_idx):
             except Exception: pass
             
         db.storage.from_(STORAGE_BUCKET).upload(file_path, f_b, {"content-type": mime})
-        return file_path # URLではなくファイルパスを返す
+        return file_path
     except Exception as e:
         st.warning(f"画像アップロードスキップ: {e}")
         return None
 
-# ★ Security対策: パスから1時間限定の Signed URL を発行して表示する
 def get_signed_url(file_path):
     if not file_path or not db: return None
     try:
         res = db.storage.from_(STORAGE_BUCKET).create_signed_url(file_path, 3600)
         return res.get('signedURL', None)
-    except Exception:
-        return None
-
-# ★ 孤児ファイル対策: DBエラー時のロールバック処理追加
-def save_single_evaluation(d, file_obj=None):
-    img_path = upload_file_to_storage(file_obj, 0)
-    try:
-        db.table("evaluations").insert({
-            "clinic_name": d.get("clinic_name"), "patient_name": d.get("patient_name"),
-            "slip_number": d.get("slip_number"), "completion_date": d.get("completion_date"),
-            "sheet_type": d.get("sheet_type", "セパレートレス模型"), "restoration_type": d.get("restoration_type"),
-            "material": d.get("material"), "tooth_position": d.get("tooth_position"),
-            "contact": safe_int(d.get("contact")), "bite": safe_int(d.get("bite")), "fit": safe_int(d.get("fit")),
-            "comments": d.get("comments", ""), "image_url": img_path
-        }).execute()
-        clear_db_cache()
-    except Exception as e:
-        st.error(f"データベース登録エラー: {e}")
-        if img_path: # ロールバック（ゴミファイル削除）
-            db.storage.from_(STORAGE_BUCKET).remove([img_path])
+    except Exception: return None
 
 def display_file_preview(file_obj):
     if not file_obj:
@@ -169,6 +161,29 @@ def display_file_preview(file_obj):
     else:
         try: st.image(file_obj.getvalue(), use_container_width=True)
         except Exception: st.warning("画像を表示できません")
+
+def process_single_file(f, actual_idx, prompt_text, ai_config):
+    try:
+        if "pdf" in f.type: cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
+        else:
+            img = Image.open(io.BytesIO(f.getvalue()))
+            img = ImageOps.exif_transpose(img)
+            img = ImageEnhance.Contrast(img).enhance(1.2)
+            cp = img
+        
+        res = call_gemini_with_fallback(prompt_text=prompt_text, image_part=cp, ai_config=ai_config)
+        if res and res.text:
+            parsed = clean_and_parse_json(res.text) 
+            if isinstance(parsed, dict): parsed = [parsed]
+            for item in parsed:
+                item["_f_idx"] = actual_idx
+                tp = str(item.get("tooth_position", ""))
+                if re.search(r'\d{2,}', tp) or re.search(r'\d[-~]\d', tp):
+                    item["restoration_type"] = "ブリッジ"
+            return parsed
+    except Exception as e:
+        return {"error": f"ファイル解析エラー ({f.name}): {e}"}
+    return None
 
 # ==========================================
 # 4. 画面描画 (Tabs)
@@ -187,7 +202,7 @@ with tab1:
     up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed", key=st.session_state["uploader_key"])
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
-        with st.spinner("AIがシートを精密解析中..."):
+        with st.spinner("AIがシートを並列解析中... (高速化モード)"):
             prompt_text = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
                 "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
@@ -206,47 +221,24 @@ with tab1:
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
             
             r_list = []
-            BATCH_SIZE = 5
             total_files = len(up_files)
-            
             progress_bar = st.progress(0)
             status_text = st.empty()
+            processed_count = 0
             
-            for i in range(0, total_files, BATCH_SIZE):
-                chunk_files = up_files[i : i + BATCH_SIZE]
-                current_end = min(i + BATCH_SIZE, total_files)
-                status_text.markdown(f"**⏳ 処理中... {i + 1}〜{current_end}枚目 / 全{total_files}枚**")
-                
-                for idx, f in enumerate(chunk_files):
-                    actual_idx = i + idx 
-                    try:
-                        if "pdf" in f.type: cp = types.Part.from_bytes(data=f.getvalue(), mime_type="application/pdf")
-                        else:
-                            img = Image.open(io.BytesIO(f.getvalue()))
-                            img = ImageOps.exif_transpose(img)
-                            img = ImageEnhance.Contrast(img).enhance(1.2)
-                            cp = img
-                        
-                        # 明示的に image と prompt_text を分けて渡す
-                        res = call_gemini_with_fallback(prompt_text=prompt_text, image_part=cp, ai_config=ai_config)
-                        
-                        if res and res.text:
-                            parsed = json.loads(res.text.strip())
-                            if isinstance(parsed, dict): parsed = [parsed]
-                            for item in parsed:
-                                item["_f_idx"] = actual_idx
-                                tp = str(item.get("tooth_position", ""))
-                                if re.search(r'\d{2,}', tp) or re.search(r'\d[-~]\d', tp):
-                                    item["restoration_type"] = "ブリッジ"
-                                r_list.append(item)
-                    except Exception as e: st.error(f"ファイル解析エラー ({f.name}): {e}")
-                
-                progress_bar.progress(current_end / total_files)
-                time.sleep(1.0)
-            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_idx = {executor.submit(process_single_file, f, idx, prompt_text, ai_config): idx for idx, f in enumerate(up_files)}
+                for future in concurrent.futures.as_completed(future_to_idx):
+                    processed_count += 1
+                    status_text.markdown(f"**⏳ 並列解析中... {processed_count} / 全{total_files}枚 完了**")
+                    progress_bar.progress(processed_count / total_files)
+                    result = future.result()
+                    if result:
+                        if isinstance(result, list): r_list.extend(result)
+                        elif "error" in result: st.error(result["error"])
+
             status_text.empty()
             progress_bar.empty()
-            
             st.session_state["r_list"] = r_list
             st.session_state["f_list"] = up_files
             st.toast(f"合計 {len(r_list)} 件のデータを検出しました！", icon="✨")
@@ -281,7 +273,6 @@ with tab1:
             })
         
         df_edit = pd.DataFrame(formatted_data)
-        
         edited_df = st.data_editor(
             df_edit,
             column_config={
@@ -305,7 +296,6 @@ with tab1:
         )
 
         st.markdown("<br>", unsafe_allow_html=True)
-        
         selected_indices = edited_df[edited_df["✅ 選択"] == True].index.tolist()
         if len(selected_indices) > 0:
             st.markdown(f"**☑️ 選択した {len(selected_indices)} 件のデータを一括変更（保存前）**")
@@ -314,7 +304,6 @@ with tab1:
                 b_sheet = bc1.selectbox("📄 シート種別を一括変更", ["変更しない"] + SHEET_TYPE_LIST, key="b1_sh")
                 b_type = bc2.selectbox("🦷 種別を一括変更", ["変更しない"] + TYPE_LIST, key="b1_ty")
                 b_mat = bc3.selectbox("💎 材料を一括変更", ["変更しない"] + MATERIAL_LIST, key="b1_ma")
-                
                 if st.button("適用する（表に反映）"):
                     for idx in selected_indices:
                         if b_sheet != "変更しない": st.session_state["r_list"][idx]["sheet_type"] = b_sheet
@@ -325,19 +314,17 @@ with tab1:
         st.markdown("<br>", unsafe_allow_html=True)
         
         if st.button("💾 確認したデータを全て一括保存", type="primary", use_container_width=True):
-            if edited_df["医院名"].isnull().any() or (edited_df["医院名"].astype(str).str.strip() == "").any() or \
-               edited_df["患者名"].isnull().any() or (edited_df["患者名"].astype(str).str.strip() == "").any():
-                st.error("⚠️ 未入力の「医院名」または「患者名」があります。表を確認してください。")
+            if edited_df["医院名"].isnull().any() or (edited_df["医院名"].astype(str).str.strip() == "").any():
+                st.error("⚠️ 未入力の「医院名」があります。表を確認してください。")
             elif db:
-                with st.spinner("データベースへ一括保存中... (超高速化)"):
+                with st.spinner("データベースへ一括保存中... (バルクインサート)"):
                     insert_data = []
-                    uploaded_paths = [] # ★孤児ファイルロールバック用リスト
+                    uploaded_paths = [] 
                     
                     for idx, row in edited_df.iterrows():
                         f_idx = row.get("_f_idx")
                         file_obj = f_list[int(f_idx)] if pd.notna(f_idx) and int(f_idx) < len(f_list) else None
-                        
-                        img_path = upload_file_to_storage(file_obj, idx)
+                        img_path = upload_file_to_storage(file_obj)
                         if img_path: uploaded_paths.append(img_path)
                         
                         insert_data.append({
@@ -354,7 +341,11 @@ with tab1:
                     
                     if insert_data:
                         try:
-                            db.table("evaluations").insert(insert_data).execute()
+                            chunk_size = 100
+                            for i in range(0, len(insert_data), chunk_size):
+                                chunk = insert_data[i:i + chunk_size]
+                                db.table("evaluations").insert(chunk).execute()
+                                
                             clear_db_cache()
                             del st.session_state["r_list"], st.session_state["f_list"]
                             st.session_state["uploader_key"] = "uploader_" + str(time.time())
@@ -363,9 +354,8 @@ with tab1:
                             st.rerun()
                         except Exception as e:
                             st.error(f"一括保存エラー: {e}")
-                            # ロールバック処理
-                            for p in uploaded_paths:
-                                db.storage.from_(STORAGE_BUCKET).remove([p])
+                            if uploaded_paths:
+                                db.storage.from_(STORAGE_BUCKET).remove(uploaded_paths)
 
 # ------------------------------------------
 # Tab 2: 手動登録
@@ -395,13 +385,20 @@ with tab2:
             if st.form_submit_button("手動で登録する", type="primary"):
                 if not m_clinic or not m_patient: st.error("⚠️ 医院名と患者名は必須入力です。")
                 elif db:
-                    save_single_evaluation({
-                        "clinic_name": m_clinic, "patient_name": m_patient, "slip_number": m_slip,
-                        "completion_date": m_date.isoformat(), "sheet_type": m_stype,
-                        "restoration_type": m_type, "material": m_material,
-                        "tooth_position": m_pos, "contact": m_con, "bite": m_bit, "fit": m_fit, "comments": m_com
-                    }, file_obj=m_file)
-                    st.toast("手動登録が完了しました！入力欄はリセットされました。", icon="✅")
+                    img_path = upload_file_to_storage(m_file)
+                    try:
+                        db.table("evaluations").insert({
+                            "clinic_name": m_clinic, "patient_name": m_patient, "slip_number": m_slip,
+                            "completion_date": m_date.isoformat(), "sheet_type": m_stype,
+                            "restoration_type": m_type, "material": m_material,
+                            "tooth_position": m_pos, "contact": m_con, "bite": m_bit, "fit": m_fit, "comments": m_com,
+                            "image_url": img_path
+                        }).execute()
+                        clear_db_cache()
+                        st.toast("手動登録が完了しました！入力欄はリセットされました。", icon="✅")
+                    except Exception as e:
+                        st.error(f"データベース登録エラー: {e}")
+                        if img_path: db.storage.from_(STORAGE_BUCKET).remove([img_path])
 
 # ------------------------------------------
 # Tab 3: 分析ダッシュボード
@@ -480,17 +477,27 @@ with tab3:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
-            with st.spinner("AIがデータを分析中..."):
-                cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
-                dic = f_df[[c for c in cols if c in f_df.columns]].astype(str).to_dict(orient='records')
+        if st.button("🤖 AI詳細分析（時系列トレンド・専門基準による考察）", type="primary", use_container_width=True):
+            with st.spinner("AIが時系列データを含めて分析中..."):
+                # ★修正：年月（YYYY-MM）ごとの集計にすることで、AIに「時系列トレンド」を分析させる
+                f_df_trend = f_df.copy()
+                f_df_trend['年月'] = pd.to_datetime(f_df_trend['completion_date']).dt.strftime('%Y-%m')
                 
-                # ★ 修正: 分析対象データを明示的にテキストとして渡す
+                summary_df = f_df_trend.groupby(['年月', 'clinic_name', 'restoration_type', 'material']).agg(
+                    件数=('id', 'count'),
+                    コンタクト平均=('contact', 'mean'),
+                    バイト平均=('bite', 'mean'),
+                    適合平均=('fit', 'mean')
+                ).round(2).reset_index()
+                
+                dic_data = summary_df.to_dict(orient='records')
+                
                 prompt_text = (
                     f"【重要：必ず日本語で回答してください】\n"
                     f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。\n"
-                    "評価スコアは「3が適正」「1が弱い（緩い・低い）」「5がきついの前提で、プロの歯科技工士の視点から考察・分析を行ってください。\n"
-                    f"データ:\n{dic}"
+                    "評価スコアは「3が適正」「1が弱い（緩い・低い）」「5がきつい（高い）」の前提で、プロの歯科技工士の視点から考察・分析を行ってください。\n"
+                    "【重要】データには「年月」が含まれています。時系列での品質の変化（ある時期から改善した、あるいは悪化した等のトレンド）があれば、必ず言及してください。\n"
+                    f"集計データ:\n{dic_data}"
                 )
                 try:
                     res_ai = call_gemini_with_fallback(prompt_text=prompt_text)
@@ -681,8 +688,7 @@ with tab4:
                     if update_data:
                         with st.spinner("一括更新中..."):
                             target_ids = selected_rows["id"].tolist()
-                            for tid in target_ids:
-                                db.table("evaluations").update(update_data).eq("id", int(tid)).execute()
+                            db.table("evaluations").update(update_data).in_("id", target_ids).execute()
                         clear_db_cache()
                         st.success("一括更新が完了しました！画面を再読み込みします。")
                         time.sleep(1.5)
@@ -722,13 +728,12 @@ with tab4:
                 old_df = df[(pd.to_datetime(df['completion_date'], errors='coerce') < (pd.Timestamp.today() - pd.DateOffset(years=1))) & (df['image_url'].notna())]
                 st.write(f"削除対象画像: **{len(old_df)} 件**")
                 if len(old_df) > 0 and st.button("⚠️ 対象の画像を削除する"):
-                    with st.spinner("画像データをクリーンアップ中..."):
-                        for _, row in old_df.iterrows():
-                            # 保存されているパスを取り出して削除
-                            file_path = row['image_url']
-                            if file_path:
-                                db.storage.from_(STORAGE_BUCKET).remove([file_path])
-                                db.table("evaluations").update({"image_url": None}).eq("id", row['id']).execute()
+                    with st.spinner("画像データを一括クリーンアップ中..."):
+                        paths_to_delete = [row['image_url'] for _, row in old_df.iterrows() if row['image_url']]
+                        if paths_to_delete:
+                            db.storage.from_(STORAGE_BUCKET).remove(paths_to_delete)
+                            old_ids = old_df['id'].tolist()
+                            db.table("evaluations").update({"image_url": None}).in_("id", old_ids).execute()
                         clear_db_cache()
                         st.success("🎉 古い画像の削除が完了しました！")
                         time.sleep(1.5)
@@ -739,7 +744,7 @@ with tab4:
             st.warning("選択したデータをDBから完全に消去します。")
             selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
             if selected_ids and st.button(f"⚠️ 選択した {len(selected_ids)} 件のデータを完全に削除する"):
-                for tid in selected_ids: db.table("evaluations").delete().eq("id", tid).execute()
+                db.table("evaluations").delete().in_("id", selected_ids).execute()
                 clear_db_cache()
                 st.success("削除完了しました！")
                 time.sleep(1)
@@ -757,8 +762,12 @@ with tab4:
                     records = df_restore.to_dict(orient="records")
                     
                     with st.spinner("データをデータベースに復元中..."):
-                        if records: db.table("evaluations").insert(records).execute()
-                            
+                        if records:
+                            chunk_size = 100
+                            for i in range(0, len(records), chunk_size):
+                                chunk = records[i:i + chunk_size]
+                                db.table("evaluations").insert(chunk).execute()
+                                
                     clear_db_cache()
                     st.success(f"🎉 {len(records)} 件のデータを無事に復元しました！画面を再読み込みします。")
                     time.sleep(2)
