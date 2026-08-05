@@ -9,7 +9,7 @@ import concurrent.futures
 
 # モジュールのインポート
 from config import SHEET_TYPE_LIST, MATERIAL_LIST, TYPE_LIST, KEY
-from db import get_db, fetch_evaluations, clear_db_cache, upload_file_to_storage, remove_files_from_storage
+from db import get_db, fetch_evaluations, clear_db_cache, upload_file_to_storage, remove_files_from_storage, hash_patient_name
 from ai import process_single_file, call_gemini_with_fallback
 
 # ==========================================
@@ -183,7 +183,7 @@ with tab1:
             if edited_df["医院名"].isnull().any() or (edited_df["医院名"].astype(str).str.strip() == "").any():
                 st.error("⚠️ 未入力の「医院名」があります。表を確認してください。")
             elif db:
-                with st.spinner("データベースへ一括保存中... (バルクインサート)"):
+                with st.spinner("データベースへ一括保存中... (匿名化＆バルクインサート)"):
                     insert_data = []
                     uploaded_paths = [] 
                     
@@ -194,7 +194,9 @@ with tab1:
                         if img_path: uploaded_paths.append(img_path)
                         
                         insert_data.append({
-                            "clinic_name": str(row.get("医院名", "")), "patient_name": str(row.get("患者名", "")),
+                            "clinic_name": str(row.get("医院名", "")), 
+                            # ★ 患者名を匿名ID（ハッシュ値）に変換して登録
+                            "patient_name": hash_patient_name(str(row.get("患者名", ""))),
                             "slip_number": str(row.get("伝票番号", "")),
                             "completion_date": row.get("完成日").isoformat() if pd.notna(row.get("完成日")) else date.today().isoformat(),
                             "sheet_type": str(row.get("シート種別", "セパレートレス模型")),
@@ -215,7 +217,7 @@ with tab1:
                             clear_db_cache()
                             del st.session_state["r_list"], st.session_state["f_list"]
                             st.session_state["uploader_key"] = "uploader_" + str(time.time())
-                            st.success("🎉 データの一括保存が完了しました！")
+                            st.success("🎉 データの一括保存が完了しました！（患者名は安全に匿名化されました）")
                             time.sleep(1.5)
                             st.rerun()
                         except Exception as e:
@@ -253,14 +255,17 @@ with tab2:
                     img_path = upload_file_to_storage(m_file)
                     try:
                         db.table("evaluations").insert({
-                            "clinic_name": m_clinic, "patient_name": m_patient, "slip_number": m_slip,
+                            "clinic_name": m_clinic, 
+                            # ★ 患者名を匿名ID（ハッシュ値）に変換して登録
+                            "patient_name": hash_patient_name(m_patient), 
+                            "slip_number": m_slip,
                             "completion_date": m_date.isoformat(), "sheet_type": m_stype,
                             "restoration_type": m_type, "material": m_material,
                             "tooth_position": m_pos, "contact": m_con, "bite": m_bit, "fit": m_fit, "comments": m_com,
                             "image_url": img_path
                         }).execute()
                         clear_db_cache()
-                        st.toast("手動登録が完了しました！", icon="✅")
+                        st.toast("手動登録が完了しました！（患者名は安全に匿名化されました）", icon="✅")
                     except Exception as e:
                         st.error(f"データベース登録エラー: {e}")
                         if img_path: remove_files_from_storage([img_path])
@@ -404,7 +409,7 @@ with tab4:
         
         with st.container(border=True):
             col_s1, col_s2 = st.columns([3, 1])
-            q = col_s1.text_input("🔍 患者名・医院名で検索")
+            q = col_s1.text_input("🔍 患者ID・医院名で検索")
             col_s2.markdown("<br>", unsafe_allow_html=True)
             col_s2.download_button("📥 CSVダウンロード", df.to_csv(index=False).encode('utf-8-sig'), "evaluations.csv", "text/csv", use_container_width=True)
                 
@@ -426,7 +431,7 @@ with tab4:
                 "id": st.column_config.NumberColumn("ID", width="small"),
                 "completion_date": st.column_config.DateColumn("📅 完成日"),
                 "clinic_name": st.column_config.TextColumn("🏥 医院名", required=True),
-                "patient_name": st.column_config.TextColumn("👤 患者名", required=True),
+                "patient_name": st.column_config.TextColumn("👤 患者ID (匿名)", disabled=True),
                 "slip_number": st.column_config.TextColumn("📝 伝票番号"),
                 "sheet_type": st.column_config.SelectboxColumn("📄 シート種別", options=SHEET_TYPE_LIST),
                 "restoration_type": st.column_config.SelectboxColumn("🦷 種別", options=TYPE_LIST),
@@ -489,7 +494,7 @@ with tab4:
         st.markdown("---")
         with st.expander("🗑️ データ・画像の一括削除", expanded=False):
             st.warning("選択したデータをDBから完全に消去します。")
-            selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
+            selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - 患者ID:{row['patient_name']}", key=f"del_{row['id']}")]
             if selected_ids and st.button(f"⚠️ 選択した {len(selected_ids)} 件のデータを完全に削除する"):
                 db.table("evaluations").delete().in_("id", selected_ids).execute()
                 clear_db_cache()
