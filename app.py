@@ -44,7 +44,6 @@ st.markdown('<div class="custom-title">🦷 AI品質管理カルテ <span style=
 # 2. 定数 & データベース設定
 # ==========================================
 SHEET_TYPE_LIST = ["セパレートレス模型", "IOS"]
-# ★ 材料リストに「PEEK」を追加
 MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "チタン", "3Dプリント", "PEEK", "その他"]
 TYPE_LIST = ["クラウン（単冠）", "ブリッジ", "インレー", "インプラント", "義歯", "その他"]
 
@@ -66,7 +65,6 @@ def safe_int(val, default=3):
     except (ValueError, TypeError): return default
 
 def prep_dataframe(df):
-    """データベースから取得したDFの型をStreamlit用に整える"""
     if not df.empty:
         df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce').dt.date
         for col in ['contact', 'bite', 'fit', 'id']:
@@ -75,7 +73,6 @@ def prep_dataframe(df):
     return df
 
 def call_gemini_with_fallback(contents, prm, ai_config=None):
-    """3.5 Flash -> 3.5 Flash Lite -> 2.5 Flash の順でAPIを呼び出す共通関数"""
     client = genai.Client(api_key=KEY)
     models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash']
     for idx, model in enumerate(models):
@@ -83,13 +80,12 @@ def call_gemini_with_fallback(contents, prm, ai_config=None):
             return client.models.generate_content(model=model, contents=[contents, prm] if isinstance(contents, (Image.Image, types.Part)) else prm, config=ai_config)
         except Exception as e:
             if idx == len(models) - 1:
-                raise e # 最後のモデルも失敗したらエラーを投げる
+                raise e 
             else:
                 time.sleep(0.5)
     return None
 
 def upload_file_to_storage(file_obj, suffix_idx):
-    """画像をSupabaseストレージへアップロード"""
     if not file_obj or not db: return None
     f_b = file_obj.getvalue()
     is_pdf = "pdf" in file_obj.type
@@ -114,7 +110,6 @@ def upload_file_to_storage(file_obj, suffix_idx):
         return None
 
 def save_single_evaluation(d, file_obj=None):
-    """単一データのデータベース保存"""
     img_url = upload_file_to_storage(file_obj, 0)
     db.table("evaluations").insert({
         "clinic_name": d.get("clinic_name"), "patient_name": d.get("patient_name"),
@@ -126,7 +121,6 @@ def save_single_evaluation(d, file_obj=None):
     }).execute()
 
 def display_file_preview(file_obj):
-    """ファイル（画像/PDF）のプレビュー表示"""
     if not file_obj:
         st.write("ファイルがありません")
         return
@@ -143,6 +137,10 @@ def display_file_preview(file_obj):
 # ==========================================
 # 4. 画面描画 (Tabs)
 # ==========================================
+# ★ アップローダーをリセットするためのセッション管理
+if "uploader_key" not in st.session_state:
+    st.session_state["uploader_key"] = "uploader_" + str(time.time())
+
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
 # ------------------------------------------
@@ -150,13 +148,14 @@ tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
-    st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。大量の枚数でも安全に処理されます。")
-    up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
+    st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。一括保存後、自動で次の画像を入れられるようクリアされます。")
+    # ★ 動的キーを付与してリセット可能にする
+    up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed", key=st.session_state["uploader_key"])
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
             
-            # ★ 製品名の略称ルールと、IOSシートの判定ルールを追加
+            # ★ ジルコニアのブリッジ処理ルールを追加
             prm = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
                 "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
@@ -166,6 +165,7 @@ with tab1:
                 "   - 「ZR」や「ジル」から始まる場合 => material: ジルコニア\n"
                 "   - 「ZR-IN」「ZRインレー」が含まれる場合 => material: ジルコニア, restoration_type: インレー\n"
                 "   - 「ZR-C」や「ZR-E」が含まれる場合 => material: ジルコニア, restoration_type: クラウン（単冠）\n"
+                "   - 【重要】材料がジルコニアと推測される場合で、部位（tooth_position）に「345」や「56」などのように数字が複数並んでいる（連なっている）場合は、restoration_type を基本的に「ブリッジ」としてください。\n"
                 f"   ※上記ルールに当てはまらない場合は、restoration_typeは {', '.join(TYPE_LIST)} から、materialは {', '.join(MATERIAL_LIST)} から最も近いものを選択。\n"
                 "3. スコアの抽出: 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
                 "4. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
@@ -220,7 +220,7 @@ with tab1:
 
     if "r_list" in st.session_state:
         st.markdown("<br>### 📝 抽出データの確認と修正", unsafe_allow_html=True)
-        st.markdown('<div class="shortcut-guide">⌨️ Excelのように表を直接クリックして修正できます。<b>Tab</b>キーで右へサクサク移動可能です。</div>', unsafe_allow_html=True)
+        st.markdown('<div class="shortcut-guide">⌨️ Excelのように表を直接クリックして修正できます。<b>Shift+クリック</b>で複数選択し、<b>Ctrl+V</b>で一括ペーストも可能です。</div>', unsafe_allow_html=True)
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
         with st.container(border=True):
@@ -295,6 +295,8 @@ with tab1:
                         db.table("evaluations").insert(insert_data).execute()
                         
                 del st.session_state["r_list"], st.session_state["f_list"]
+                # ★ アップローダーのキーを更新して強制クリア
+                st.session_state["uploader_key"] = "uploader_" + str(time.time())
                 st.success("🎉 データの一括保存が完了しました！")
                 time.sleep(1.5)
                 st.rerun()
@@ -496,7 +498,7 @@ with tab4:
 
             st.markdown("---")
             st.markdown("#### 📝 データの一括編集（Excelのように直接書き換え）")
-            st.info("表のセルを直接クリックして編集できます。右にスクロールして全項目を確認できます。編集後、下の「変更を保存」ボタンを押してください。")
+            st.info("💡 操作のコツ：セルを1回クリックして「青い枠」がついた状態で、Shiftキーを押しながら別のセルをクリックすると複数選択できます。その状態で Ctrl+V（ペースト）すると一括で変更が可能です。")
             
             edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments']
             df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
