@@ -10,7 +10,7 @@ import io
 import time
 from datetime import date
 import base64
-import re  # ★ 正規表現（文字のパターン検知）を使うために追加
+import re
 
 # ==========================================
 # 1. アプリケーション初期設定 & CSS
@@ -30,9 +30,29 @@ st.markdown("""
     input:focus, select:focus, textarea:focus { background-color: #FFFFFF !important; border: 1px solid #007AFF !important; box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important; }
     .metric-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.5); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.06); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
-    button[data-baseweb="tab"] { background-color: transparent !important; font-weight: 600 !important; color: #8E8E93 !important; font-size: 15px !important; }
-    button[data-baseweb="tab"][aria-selected="true"] { color: #1D1D1F !important; }
-    div[data-baseweb="tab-highlight"] { background-color: #1D1D1F !important; height: 3px !important; border-radius: 3px 3px 0 0 !important; }
+    
+    /* ======== ★修正箇所：タブの重なり・文字潰れの解消 ======== */
+    button[data-baseweb="tab"] {
+        padding: 12px 24px !important; /* 十分な余白を確保 */
+        background-color: transparent !important;
+        border: none !important;
+    }
+    button[data-baseweb="tab"] p {
+        font-size: 16px !important; /* 文字を大きく */
+        font-weight: 600 !important;
+        color: #8E8E93 !important; /* 非選択時はグレー */
+        margin: 0 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] p {
+        color: #1D1D1F !important; /* 選択時は黒 */
+    }
+    div[data-baseweb="tab-highlight"], div[data-testid="stTabIndicator"] {
+        background-color: #1D1D1F !important; /* 選択中のラインも黒に統一 */
+        height: 3px !important;
+        border-radius: 3px 3px 0 0 !important;
+    }
+    /* =========================================================== */
+    
     .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
@@ -201,9 +221,7 @@ with tab1:
                             for item in parsed:
                                 item["_f_idx"] = actual_idx
                                 
-                                # ★ 【追加】部位の文字列から「ブリッジ」を強制判定するルール
                                 tp = str(item.get("tooth_position", ""))
-                                # 数字が2桁以上連続している(345, 56等)、または数字と数字がハイフン・波線で繋がっている(3-5等)場合
                                 if re.search(r'\d{2,}', tp) or re.search(r'\d[-~]\d', tp):
                                     item["restoration_type"] = "ブリッジ"
                                 
