@@ -12,139 +12,41 @@ from datetime import date
 import base64
 
 # ==========================================
-# 1. アプリケーション初期設定 & CSS (Apple風ライトモード)
+# 1. アプリケーション初期設定 & CSS
 # ==========================================
 st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
-    /* 全体の背景とフォント (Apple風) */
-    .stApp {
-        background-color: #F5F5F7 !important; 
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Arial, sans-serif !important;
-    }
+    .stApp { background-color: #F5F5F7 !important; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
     #MainMenu, header, footer {visibility: hidden;}
-    
-    /* タイトル周り */
-    .custom-title {
-        font-size: clamp(1.8rem, 5vw, 2.4rem);
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        color: #1D1D1F;
-        margin-bottom: 20px;
-    }
-    
-    /* プライマリボタン (Apple Blue) */
-    .stButton>button[kind="primary"] {
-        background-color: #007AFF !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 0.6rem 1.2rem !important;
-        font-weight: 600 !important;
-        font-size: 15px !important;
-        letter-spacing: 0.01em;
-        box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25) !important;
-        transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important;
-    }
-    .stButton>button[kind="primary"]:hover {
-        background-color: #0062CC !important;
-        transform: scale(0.98) !important;
-        box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2) !important;
-    }
-    
-    /* 枠やコンテナ */
-    div[data-testid="stVerticalBlock"] > div[style*="border"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid rgba(0,0,0,0.05) !important;
-        border-radius: 18px !important; 
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04) !important;
-        padding: 24px !important;
-    }
-    
-    /* Expander (折りたたみ) */
-    .streamlit-expanderHeader {
-        background-color: #FFFFFF !important;
-        border-radius: 14px !important;
-        border: 1px solid #E5E5EA !important;
-        font-weight: 600 !important;
-        color: #1D1D1F !important;
-    }
-    
-    /* 入力フォーム */
-    input, select, textarea {
-        background-color: #F2F2F7 !important;
-        border: 1px solid transparent !important;
-        border-radius: 10px !important;
-        color: #1D1D1F !important;
-        transition: all 0.2s ease !important;
-    }
-    input:focus, select:focus, textarea:focus {
-        background-color: #FFFFFF !important;
-        border: 1px solid #007AFF !important;
-        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important;
-    }
-    
-    /* メトリックカード */
-    .metric-card {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        padding: 24px; 
-        border-radius: 20px; 
-        border: 1px solid rgba(255, 255, 255, 0.5);
-        text-align: center; 
-        box-shadow: 0 8px 32px rgba(0,0,0,0.06);
-    }
-    .metric-card h2 {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif;
-        letter-spacing: -0.04em;
-    }
-    
-    /* タブのスタイリング */
-    button[data-baseweb="tab"] {
-        background-color: transparent !important;
-        font-weight: 600 !important;
-        color: #8E8E93 !important;
-        font-size: 15px !important;
-    }
-    button[data-baseweb="tab"][aria-selected="true"] {
-        color: #1D1D1F !important;
-    }
-    div[data-baseweb="tab-highlight"] {
-        background-color: #1D1D1F !important;
-        height: 3px !important;
-        border-radius: 3px 3px 0 0 !important;
-    }
-    
-    /* ガイド・アラート類 */
-    .shortcut-guide {
-        font-size: 0.85rem;
-        color: #1D1D1F;
-        background: rgba(0, 122, 255, 0.08);
-        padding: 8px 14px;
-        border-radius: 10px;
-        margin-bottom: 14px;
-        display: inline-block;
-        font-weight: 500;
-    }
-    .alert-card {
-        padding: 14px 18px;
-        border-left: 4px solid #FF3B30;
-        background-color: rgba(255, 59, 48, 0.05);
-        border-radius: 12px;
-        margin-bottom: 10px;
-        color: #1D1D1F;
-        font-weight: 500;
-    }
+    .custom-title { font-size: clamp(1.8rem, 5vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; color: #1D1D1F; margin-bottom: 20px; }
+    .stButton>button[kind="primary"] { background-color: #007AFF !important; color: #FFFFFF !important; border: none !important; border-radius: 12px !important; padding: 0.6rem 1.2rem !important; font-weight: 600 !important; font-size: 15px !important; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25) !important; transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important; }
+    .stButton>button[kind="primary"]:hover { background-color: #0062CC !important; transform: scale(0.98) !important; box-shadow: 0 2px 6px rgba(0, 122, 255, 0.2) !important; }
+    div[data-testid="stVerticalBlock"] > div[style*="border"] { background-color: #FFFFFF !important; border: 1px solid rgba(0,0,0,0.05) !important; border-radius: 18px !important; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.04) !important; padding: 24px !important; }
+    .streamlit-expanderHeader { background-color: #FFFFFF !important; border-radius: 14px !important; border: 1px solid #E5E5EA !important; font-weight: 600 !important; color: #1D1D1F !important; }
+    input, select, textarea { background-color: #F2F2F7 !important; border: 1px solid transparent !important; border-radius: 10px !important; color: #1D1D1F !important; transition: all 0.2s ease !important; }
+    input:focus, select:focus, textarea:focus { background-color: #FFFFFF !important; border: 1px solid #007AFF !important; box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important; }
+    .metric-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.5); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.06); }
+    .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
+    button[data-baseweb="tab"] { background-color: transparent !important; font-weight: 600 !important; color: #8E8E93 !important; font-size: 15px !important; }
+    button[data-baseweb="tab"][aria-selected="true"] { color: #1D1D1F !important; }
+    div[data-baseweb="tab-highlight"] { background-color: #1D1D1F !important; height: 3px !important; border-radius: 3px 3px 0 0 !important; }
+    .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
+    .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="custom-title">🦷 AI品質管理カルテ <span style="font-size: 0.5em; font-weight: 500; color: #8E8E93;">(大阪センター)</span></div>', unsafe_allow_html=True)
 
+
 # ==========================================
-# 2. データベース接続 & 共通関数
+# 2. 定数 & データベース設定
 # ==========================================
+SHEET_TYPE_LIST = ["セパレートレス模型", "IOS"]
+MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "チタン", "3Dプリント", "その他"]
+TYPE_LIST = ["クラウン（単冠）", "ブリッジ", "インレー", "インプラント", "義歯", "その他"]
+
 KEY = st.secrets.get("GEMINI_API_KEY")
 URL = st.secrets.get("SUPABASE_URL")
 S_KEY = st.secrets.get("SUPABASE_KEY")
@@ -152,20 +54,41 @@ S_KEY = st.secrets.get("SUPABASE_KEY")
 @st.cache_resource
 def get_db():
     return create_client(URL, S_KEY) if URL and S_KEY else None
-
 db = get_db()
 
-SHEET_TYPE_LIST = ["セパレートレス模型", "IOS"]
-MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "チタン", "3Dプリント", "その他"]
-TYPE_LIST = ["クラウン（単冠）", "ブリッジ", "インレー", "インプラント", "義歯", "その他"]
 
+# ==========================================
+# 3. 共通・ヘルパー関数
+# ==========================================
 def safe_int(val, default=3):
-    try:
-        return max(1, min(5, int(float(val))))
-    except (ValueError, TypeError):
-        return default
+    try: return max(1, min(5, int(float(val))))
+    except (ValueError, TypeError): return default
+
+def prep_dataframe(df):
+    """データベースから取得したDFの型をStreamlit用に整える"""
+    if not df.empty:
+        df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce').dt.date
+        for col in ['contact', 'bite', 'fit', 'id']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+def call_gemini_with_fallback(contents, prm, ai_config=None):
+    """3.5 Flash -> 3.5 Flash Lite -> 2.5 Flash の順でAPIを呼び出す共通関数"""
+    client = genai.Client(api_key=KEY)
+    models = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-2.5-flash']
+    for idx, model in enumerate(models):
+        try:
+            return client.models.generate_content(model=model, contents=[contents, prm] if isinstance(contents, (Image.Image, types.Part)) else prm, config=ai_config)
+        except Exception as e:
+            if idx == len(models) - 1:
+                raise e # 最後のモデルも失敗したらエラーを投げる
+            else:
+                time.sleep(0.5)
+    return None
 
 def upload_file_to_storage(file_obj, suffix_idx):
+    """画像をSupabaseストレージへアップロード"""
     if not file_obj or not db: return None
     f_b = file_obj.getvalue()
     is_pdf = "pdf" in file_obj.type
@@ -190,24 +113,19 @@ def upload_file_to_storage(file_obj, suffix_idx):
         return None
 
 def save_single_evaluation(d, file_obj=None):
+    """単一データのデータベース保存"""
     img_url = upload_file_to_storage(file_obj, 0)
     db.table("evaluations").insert({
-        "clinic_name": d.get("clinic_name"),
-        "patient_name": d.get("patient_name"),
-        "slip_number": d.get("slip_number"),
-        "completion_date": d.get("completion_date"),
-        "sheet_type": d.get("sheet_type", "セパレートレス模型"),
-        "restoration_type": d.get("restoration_type"),
-        "material": d.get("material"),
-        "tooth_position": d.get("tooth_position"),
-        "contact": safe_int(d.get("contact")),
-        "bite": safe_int(d.get("bite")),
-        "fit": safe_int(d.get("fit")),
-        "comments": d.get("comments", ""),
-        "image_url": img_url
+        "clinic_name": d.get("clinic_name"), "patient_name": d.get("patient_name"),
+        "slip_number": d.get("slip_number"), "completion_date": d.get("completion_date"),
+        "sheet_type": d.get("sheet_type", "セパレートレス模型"), "restoration_type": d.get("restoration_type"),
+        "material": d.get("material"), "tooth_position": d.get("tooth_position"),
+        "contact": safe_int(d.get("contact")), "bite": safe_int(d.get("bite")), "fit": safe_int(d.get("fit")),
+        "comments": d.get("comments", ""), "image_url": img_url
     }).execute()
 
 def display_file_preview(file_obj):
+    """ファイル（画像/PDF）のプレビュー表示"""
     if not file_obj:
         st.write("ファイルがありません")
         return
@@ -215,14 +133,14 @@ def display_file_preview(file_obj):
         try:
             b64_pdf = base64.b64encode(file_obj.getvalue()).decode('utf-8')
             st.markdown(f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="450" style="border: 1px solid #E5E5EA; border-radius: 12px;"></iframe>', unsafe_allow_html=True)
-        except Exception:
-            st.warning("PDFを表示できません")
+        except Exception: st.warning("PDFを表示できません")
     else:
         try: st.image(file_obj.getvalue(), use_container_width=True, style={"border-radius": "12px"})
         except Exception: st.warning("画像を表示できません")
 
+
 # ==========================================
-# 3. 画面描画 (Tabs)
+# 4. 画面描画 (Tabs)
 # ==========================================
 tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析", "📋 管理"])
 
@@ -236,7 +154,6 @@ with tab1:
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
-            c = genai.Client(api_key=KEY)
             prm = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
                 "1. シート上に「IOS」や「セパレートレス」などの記載やチェックがあれば判別してください（不明な場合は「セパレートレス模型」）。\n"
@@ -273,17 +190,8 @@ with tab1:
                             img = ImageEnhance.Contrast(img).enhance(1.2)
                             cp = img
                         
-                        res = None
-                        try:
-                            res = c.models.generate_content(model='gemini-3.5-flash', contents=[cp, prm], config=ai_config)
-                        except Exception:
-                            try:
-                                res = c.models.generate_content(model='gemini-3.5-flash-lite', contents=[cp, prm], config=ai_config)
-                                st.toast(f"ファイル {f.name}: 3.5 Flash Lite で代替解析しました", icon="ℹ️")
-                            except Exception:
-                                res = c.models.generate_content(model='gemini-2.5-flash', contents=[cp, prm], config=ai_config)
-                                st.toast(f"ファイル {f.name}: 2.5 Flash で代替解析しました", icon="ℹ️")
-
+                        res = call_gemini_with_fallback(cp, prm, ai_config)
+                        
                         if res and res.text:
                             parsed = json.loads(res.text.strip())
                             if isinstance(parsed, dict): parsed = [parsed]
@@ -293,8 +201,7 @@ with tab1:
                     except Exception as e:
                         st.error(f"ファイル解析エラー ({f.name}): {e}")
                 
-                progress_ratio = current_end / total_files
-                progress_bar.progress(progress_ratio)
+                progress_bar.progress(current_end / total_files)
                 time.sleep(1.0)
             
             status_text.empty()
@@ -312,8 +219,7 @@ with tab1:
         with st.container(border=True):
             st.markdown("**🖼️ 元画像の確認 (プレビュー)**")
             file_names = [f"画像No.{i+1} : {f.name}" for i, f in enumerate(f_list)]
-            selected_file = st.selectbox("確認したい画像を選んでください", file_names, label_visibility="collapsed")
-            selected_idx = file_names.index(selected_file)
+            selected_idx = file_names.index(st.selectbox("確認したい画像を選んでください", file_names, label_visibility="collapsed"))
             with st.expander("👀 画像を開く", expanded=False):
                 display_file_preview(f_list[selected_idx])
 
@@ -323,25 +229,17 @@ with tab1:
             except: dt = date.today()
             formatted_data.append({
                 "画像No": item.get("_f_idx", 0) + 1,
-                "医院名": item.get("clinic_name", ""),
-                "患者名": item.get("patient_name", ""),
-                "伝票番号": item.get("slip_number", ""),
-                "完成日": dt,
+                "医院名": item.get("clinic_name", ""), "患者名": item.get("patient_name", ""),
+                "伝票番号": item.get("slip_number", ""), "完成日": dt,
                 "シート種別": item.get("sheet_type", "セパレートレス模型"),
-                "種別": item.get("restoration_type", ""),
-                "材料": item.get("material", ""),
+                "種別": item.get("restoration_type", ""), "材料": item.get("material", ""),
                 "部位": item.get("tooth_position", ""),
-                "コンタクト": safe_int(item.get("contact")),
-                "バイト": safe_int(item.get("bite")),
-                "適合": safe_int(item.get("fit")),
-                "コメント": item.get("comments", ""),
-                "_f_idx": item.get("_f_idx")
+                "コンタクト": safe_int(item.get("contact")), "バイト": safe_int(item.get("bite")), "適合": safe_int(item.get("fit")),
+                "コメント": item.get("comments", ""), "_f_idx": item.get("_f_idx")
             })
         
-        df_edit = pd.DataFrame(formatted_data)
-        
         edited_df = st.data_editor(
-            df_edit,
+            pd.DataFrame(formatted_data),
             column_config={
                 "画像No": st.column_config.NumberColumn("画像No", disabled=True, width="small"),
                 "医院名": st.column_config.TextColumn("🏥 医院名", required=True),
@@ -358,10 +256,7 @@ with tab1:
                 "コメント": st.column_config.TextColumn("💬 コメント"),
                 "_f_idx": None,
             },
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            height=400
+            use_container_width=True, hide_index=True, num_rows="dynamic", height=400
         )
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -376,22 +271,17 @@ with tab1:
                     for idx, row in edited_df.iterrows():
                         f_idx = row.get("_f_idx")
                         file_obj = f_list[int(f_idx)] if pd.notna(f_idx) and int(f_idx) < len(f_list) else None
-                        img_url = upload_file_to_storage(file_obj, idx)
                         
                         insert_data.append({
-                            "clinic_name": str(row.get("医院名", "")),
-                            "patient_name": str(row.get("患者名", "")),
+                            "clinic_name": str(row.get("医院名", "")), "patient_name": str(row.get("患者名", "")),
                             "slip_number": str(row.get("伝票番号", "")),
                             "completion_date": row.get("完成日").isoformat() if pd.notna(row.get("完成日")) else date.today().isoformat(),
                             "sheet_type": str(row.get("シート種別", "セパレートレス模型")),
-                            "restoration_type": str(row.get("種別", "")),
-                            "material": str(row.get("材料", "")),
+                            "restoration_type": str(row.get("種別", "")), "material": str(row.get("材料", "")),
                             "tooth_position": str(row.get("部位", "")),
-                            "contact": safe_int(row.get("コンタクト")),
-                            "bite": safe_int(row.get("バイト")),
-                            "fit": safe_int(row.get("適合")),
+                            "contact": safe_int(row.get("コンタクト")), "bite": safe_int(row.get("バイト")), "fit": safe_int(row.get("適合")),
                             "comments": str(row.get("コメント", "")),
-                            "image_url": img_url
+                            "image_url": upload_file_to_storage(file_obj, idx)
                         })
                     
                     if insert_data:
@@ -409,24 +299,23 @@ with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
     st.markdown('<div class="shortcut-guide">⌨️ 登録ボタンを押すと、入力欄とアップロードされた画像は自動で空（リセット）になります。</div>', unsafe_allow_html=True)
     with st.container(border=True):
-        # clear_on_submit=True で、送信後に自動で中身を空っぽにします
         with st.form("manual_entry_form", clear_on_submit=True):
             m_file = st.file_uploader("📄 評価シート画像 (任意)", type=["jpg", "png", "pdf"])
             c1, c2 = st.columns(2)
             with c1:
-                m_clinic = st.text_input("🏥 医院名 (必須)", key="m_c")
-                m_patient = st.text_input("👤 患者名 (必須)", key="m_p")
-                m_slip = st.text_input("📝 伝票番号", key="m_s")
-                m_date = st.date_input("📅 完成日", value=date.today(), key="m_d")
-                m_stype = st.selectbox("📄 シート種別", SHEET_TYPE_LIST, key="m_st")
+                m_clinic = st.text_input("🏥 医院名 (必須)")
+                m_patient = st.text_input("👤 患者名 (必須)")
+                m_slip = st.text_input("📝 伝票番号")
+                m_date = st.date_input("📅 完成日", value=date.today())
+                m_stype = st.selectbox("📄 シート種別", SHEET_TYPE_LIST)
             with c2:
-                m_type = st.selectbox("🦷 種別", TYPE_LIST, key="m_t")
-                m_material = st.selectbox("💎 材料", MATERIAL_LIST, key="m_m")
-                m_pos = st.text_input("📍 部位", key="m_pos")
-                m_con = st.slider("コンタクト", 1, 5, 3, key="m_co")
-                m_bit = st.slider("バイト", 1, 5, 3, key="m_bi")
-                m_fit = st.slider("適合", 1, 5, 3, key="m_fi")
-            m_com = st.text_area("💬 コメント", key="m_cm")
+                m_type = st.selectbox("🦷 種別", TYPE_LIST)
+                m_material = st.selectbox("💎 材料", MATERIAL_LIST)
+                m_pos = st.text_input("📍 部位")
+                m_con = st.slider("コンタクト", 1, 5, 3)
+                m_bit = st.slider("バイト", 1, 5, 3)
+                m_fit = st.slider("適合", 1, 5, 3)
+            m_com = st.text_area("💬 コメント")
                 
             if st.form_submit_button("手動で登録する", type="primary"):
                 if not m_clinic or not m_patient:
@@ -437,7 +326,7 @@ with tab2:
                         "completion_date": m_date.isoformat(), "sheet_type": m_stype,
                         "restoration_type": m_type, "material": m_material,
                         "tooth_position": m_pos, "contact": m_con, "bite": m_bit, "fit": m_fit, "comments": m_com
-                    }, file_obj=m_file) # アップロードされた画像も保存
+                    }, file_obj=m_file)
                     st.toast("手動登録が完了しました！入力欄はリセットされました。", icon="✅")
 
 # ------------------------------------------
@@ -448,16 +337,14 @@ with tab3:
     if db:
         res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
         if res.data:
-            df = pd.DataFrame(res.data)
-            df['completion_date'] = pd.to_datetime(df['completion_date'], errors='coerce')
+            df = prep_dataframe(pd.DataFrame(res.data))
             
             with st.container(border=True):
-                cf1, cf2, cf3, cf4, cf5 = st.columns(5) # ★5つのフィルターに拡張
+                cf1, cf2, cf3, cf4, cf5 = st.columns(5)
                 s_c = cf1.selectbox("🏥 医院", ["すべて"] + list(df["clinic_name"].dropna().unique()))
                 s_st = cf2.selectbox("📄 シート", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
                 s_p = cf3.selectbox("📅 期間", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
                 s_m = cf4.selectbox("💎 材料", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
-                # ★追加：種別（クラウン・インレー等）での絞り込み
                 s_r = cf5.selectbox("🦷 種別", ["すべて"] + list(df.get("restoration_type", pd.Series([""])).dropna().unique()))
             
             f_df = df.copy()
@@ -467,7 +354,9 @@ with tab3:
             if s_r != "すべて" and "restoration_type" in f_df.columns: f_df = f_df[f_df["restoration_type"] == s_r]
             
             p_map = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
-            if s_p in p_map: f_df = f_df[f_df['completion_date'] >= (pd.Timestamp.today() - pd.DateOffset(months=p_map[s_p]))]
+            if s_p in p_map: 
+                cutoff = pd.Timestamp.today().date() - pd.DateOffset(months=p_map[s_p])
+                f_df = f_df[f_df['completion_date'] >= cutoff.date()]
 
             st.markdown("<br>", unsafe_allow_html=True)
             
@@ -481,13 +370,9 @@ with tab3:
             def render_metric(label, mean_val, opt_rate):
                 if mean_val == 0: return f'<div class="metric-card"><p style="font-weight:bold; color: #1D1D1F;">{label}</p><h2 style="color: #1D1D1F;">- %</h2></div>'
                 color = "#34C759" if opt_rate >= 80 else ("#FF9500" if opt_rate >= 50 else "#FF3B30")
-                return f"""
-                <div class="metric-card">
-                    <p style="margin: 0; font-size: 14px; font-weight: 600; color: #8E8E93;">{label} (適正率)</p>
+                return f"""<div class="metric-card"><p style="margin: 0; font-size: 14px; font-weight: 600; color: #8E8E93;">{label} (適正率)</p>
                     <h2 style="margin: 10px 0; color: {color}; font-size: 34px; font-weight: 800;">{opt_rate:.1f}%</h2>
-                    <p style="margin: 0; font-size: 13px; color: #1D1D1F; font-weight: 500;">平均点: {mean_val:.2f} <span style="color:#8E8E93;">(誤差 {mean_val-3.0:+.2f})</span></p>
-                </div>
-                """
+                    <p style="margin: 0; font-size: 13px; color: #1D1D1F; font-weight: 500;">平均点: {mean_val:.2f} <span style="color:#8E8E93;">(誤差 {mean_val-3.0:+.2f})</span></p></div>"""
 
             col1, col2, col3, col4 = st.columns(4)
             with col1: st.markdown(f'<div class="metric-card"><p style="margin: 0; font-size: 14px; font-weight: 600; color: #8E8E93;">📄 対象件数</p><h2 style="margin: 10px 0; font-size: 34px; font-weight: 800; color: #1D1D1F;">{len(f_df)}<span style="font-size:16px;">件</span></h2><p style="margin: 0; font-size: 13px; color: transparent;">-</p></div>', unsafe_allow_html=True)
@@ -500,54 +385,38 @@ with tab3:
                 with st.expander("🔍 医院 × 材料 クロス集計・品質偏差アラート", expanded=False):
                     cross_df = f_df.groupby(['clinic_name', 'material']).agg(
                         件数=('id', 'count'),
-                        コンタクト平均=('contact', 'mean'),
-                        バイト平均=('bite', 'mean'),
-                        適合平均=('fit', 'mean')
+                        コンタクト平均=('contact', 'mean'), バイト平均=('bite', 'mean'), 適合平均=('fit', 'mean')
                     ).reset_index()
                     
                     alerts = []
                     for _, row in cross_df[cross_df['件数'] >= 2].iterrows():
-                        if row['バイト平均'] >= 3.4:
-                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが高めの傾向があります（平均: {row['バイト平均']:.2f}）")
-                        elif row['バイト平均'] <= 2.6:
-                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが低めの傾向があります（平均: {row['バイト平均']:.2f}）")
-                            
-                        if row['コンタクト平均'] >= 3.4:
-                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがきつい傾向があります（平均: {row['コンタクト平均']:.2f}）")
-                        elif row['コンタクト平均'] <= 2.6:
-                            alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがゆるい傾向があります（平均: {row['コンタクト平均']:.2f}）")
+                        if row['バイト平均'] >= 3.4: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが高めの傾向があります（平均: {row['バイト平均']:.2f}）")
+                        elif row['バイト平均'] <= 2.6: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: バイトが低めの傾向があります（平均: {row['バイト平均']:.2f}）")
+                        if row['コンタクト平均'] >= 3.4: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがきつい傾向があります（平均: {row['コンタクト平均']:.2f}）")
+                        elif row['コンタクト平均'] <= 2.6: alerts.append(f"⚠️ <b>{row['clinic_name']}</b> × <b>{row['material']}</b>: コンタクトがゆるい傾向があります（平均: {row['コンタクト平均']:.2f}）")
 
                     if alerts:
                         st.markdown("<b>【自動検知された品質アラート】</b>", unsafe_allow_html=True)
-                        for alt in alerts:
-                            st.markdown(f'<div class="alert-card">{alt}</div>', unsafe_allow_html=True)
+                        for alt in alerts: st.markdown(f'<div class="alert-card">{alt}</div>', unsafe_allow_html=True)
                     else:
                         st.success("✅ 特定の医院×材料における顕著な品質偏差（大きなズレ）は検出されませんでした。")
 
                     st.markdown("<br><b>【医院 × 材料別 スコアマトリクス】</b>", unsafe_allow_html=True)
-                    st.dataframe(cross_df.style.format({
-                        'コンタクト平均': '{:.2f}', 'バイト平均': '{:.2f}', '適合平均': '{:.2f}'
-                    }), use_container_width=True)
+                    st.dataframe(cross_df.style.format({'コンタクト平均': '{:.2f}', 'バイト平均': '{:.2f}', '適合平均': '{:.2f}'}), use_container_width=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
 
             if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
                 with st.spinner("AIがデータを分析中..."):
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
-                    dic = f_df[[c for c in cols if c in f_df.columns]].to_dict(orient='records')
-                    # ★AIへのプロンプトにも種別条件を追加
+                    dic = f_df[[c for c in cols if c in f_df.columns]].astype(str).to_dict(orient='records')
                     prm = f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
                     
-                    res_ai = None
-                    c = genai.Client(api_key=KEY)
                     try:
-                        res_ai = c.models.generate_content(model='gemini-3.5-flash', contents=prm).text
-                    except Exception:
-                        try:
-                            res_ai = c.models.generate_content(model='gemini-3.5-flash-lite', contents=prm).text
-                        except Exception:
-                            res_ai = c.models.generate_content(model='gemini-2.5-flash', contents=prm).text
-                    st.info(res_ai)
+                        res_ai = call_gemini_with_fallback(prm, "")
+                        st.info(res_ai.text if res_ai else "分析を完了できませんでした。")
+                    except Exception as e:
+                        st.error(f"分析エラー: {e}")
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_chart1, col_chart2 = st.columns(2)
@@ -556,7 +425,7 @@ with tab3:
                 with st.container(border=True):
                     st.markdown("**📈 月別推移（品質トレンド）**")
                     if len(f_df) > 0:
-                        trend_df = f_df.assign(month=f_df['completion_date'].dt.to_period('M').astype(str)).groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
+                        trend_df = f_df.assign(month=pd.to_datetime(f_df['completion_date']).dt.to_period('M').astype(str)).groupby('month')[['contact', 'bite', 'fit']].mean().reset_index()
                         fig_line = px.line(trend_df, x='month', y=['contact', 'bite', 'fit'], markers=True, range_y=[1, 5], color_discrete_sequence=['#007AFF', '#5AC8FA', '#34C759'])
                         fig_line.add_hline(y=3.0, line_dash="dash", line_color="#8E8E93", annotation_text="適正値 (3.0)")
                         fig_line.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
@@ -600,14 +469,15 @@ with tab3:
                 st.markdown(f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #007AFF; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);">📥 医院向けレポートを出力 (HTML)</a>', unsafe_allow_html=True)
 
 # ------------------------------------------
-# Tab 4: 履歴・管理 (★一括編集機能にアップデート)
+# Tab 4: 履歴・管理
 # ------------------------------------------
 with tab4:
     st.markdown("### 📋 保存済みデータの管理・編集")
     if db:
         res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
         if res.data:
-            df = pd.DataFrame(res.data)
+            # ★ここで日付と数値の型を整えることで data_editor のエラーを回避
+            df = prep_dataframe(pd.DataFrame(res.data))
             
             with st.container(border=True):
                 col_s1, col_s2 = st.columns([3, 1])
@@ -622,16 +492,12 @@ with tab4:
             st.markdown("#### 📝 データの一括編集（Excelのように直接書き換え）")
             st.info("表のセルを直接クリックして編集できます。右にスクロールして全項目を確認できます。編集後、下の「変更を保存」ボタンを押してください。")
             
-            # 編集しやすいように列を整理
             edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments']
             df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
             
             edited_df = st.data_editor(
                 df_for_edit,
-                use_container_width=True,
-                hide_index=True,
-                key="bulk_edit_editor",
-                disabled=["id"], # IDだけはシステム用なので編集不可
+                use_container_width=True, hide_index=True, key="bulk_edit_editor", disabled=["id"], 
                 column_config={
                     "id": st.column_config.NumberColumn("ID", width="small"),
                     "completion_date": st.column_config.DateColumn("📅 完成日"),
@@ -651,21 +517,17 @@ with tab4:
             )
 
             if st.button("💾 編集内容を一括保存", type="primary"):
-                # ユーザーが編集した箇所（差分）だけを抽出して保存する
                 changes = st.session_state["bulk_edit_editor"].get("edited_rows", {})
                 if changes:
                     with st.spinner("データベースを更新中..."):
                         for row_idx, col_changes in changes.items():
                             row_id = int(df_for_edit.iloc[row_idx]['id'])
-                            
                             update_data = {}
                             for col_name, new_val in col_changes.items():
-                                # 日付型の場合は文字列に変換してDBへ
                                 if col_name == 'completion_date' and new_val is not None:
                                     update_data[col_name] = str(new_val)[:10]
                                 else:
                                     update_data[col_name] = new_val
-                                    
                             if update_data:
                                 db.table("evaluations").update(update_data).eq("id", row_id).execute()
                                 
@@ -684,8 +546,7 @@ with tab4:
                         st.success("🎉 全データのシート種別を「セパレートレス模型」に更新しました！")
                         time.sleep(1.5)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"一括更新エラー: {e}")
+                    except Exception as e: st.error(f"一括更新エラー: {e}")
 
             st.markdown("---")
             with st.expander("🧹 1年経過した古い画像を削除（文字データは残す・容量節約）", expanded=False):
@@ -708,8 +569,7 @@ with tab4:
                 st.warning("選択したデータをDBから完全に消去します。")
                 selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
                 if selected_ids and st.button(f"⚠️ 選択した {len(selected_ids)} 件のデータを完全に削除する"):
-                    for tid in selected_ids:
-                        db.table("evaluations").delete().eq("id", tid).execute()
+                    for tid in selected_ids: db.table("evaluations").delete().eq("id", tid).execute()
                     st.success("削除完了しました！")
                     time.sleep(1)
                     st.rerun()
@@ -722,19 +582,15 @@ with tab4:
                 if restore_file and st.button("⚠️ CSVからデータを一括復元する", type="primary"):
                     try:
                         df_restore = pd.read_csv(restore_file)
-                        if 'id' in df_restore.columns:
-                            df_restore = df_restore.drop(columns=['id'])
-                            
+                        if 'id' in df_restore.columns: df_restore = df_restore.drop(columns=['id'])
                         records = df_restore.to_dict(orient="records")
                         
                         with st.spinner("データをデータベースに復元中..."):
-                            if records:
-                                db.table("evaluations").insert(records).execute()
+                            if records: db.table("evaluations").insert(records).execute()
                                 
                         st.success(f"🎉 {len(records)} 件のデータを無事に復元しました！画面を再読み込みします。")
                         time.sleep(2)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"復元エラー: {e}")
+                    except Exception as e: st.error(f"復元エラー: {e}")
         else:
             st.info("保存されたデータはまだありません。")
