@@ -258,7 +258,7 @@ with tab1:
     if "r_list" in st.session_state:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📝 抽出データの確認と修正")
-        st.info("💡 操作方法：左端の「✅ 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
+        st.markdown('<div class="shortcut-guide">💡 左端の「✅ 選択」にチェックを入れると、下部のパネルから複数データを一気に変更できます。</div>', unsafe_allow_html=True)
         
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
@@ -366,8 +366,7 @@ with tab1:
 # ------------------------------------------
 with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
-    # ★ 文言とスタイルを統一
-    st.info("⌨️ 各種項目を入力して、手動で登録ボタンを押して下さい。")
+    st.markdown('<div class="shortcut-guide">⌨️ 各種項目を入力して、手動で登録ボタンを押して下さい。</div>', unsafe_allow_html=True)
     with st.container(border=True):
         with st.form("manual_entry_form", clear_on_submit=True):
             m_file = st.file_uploader("📄 評価シート画像 (任意)", type=["jpg", "png", "pdf"])
@@ -476,11 +475,18 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
 
+            # ★ 修正箇所：日本語指定プロンプトの追加
             if st.button("🤖 AI詳細分析（専門基準による考察）", type="primary", use_container_width=True):
                 with st.spinner("AIがデータを分析中..."):
                     cols = ['completion_date', 'sheet_type', 'restoration_type', 'material', 'contact', 'bite', 'fit', 'comments']
                     dic = f_df[[c for c in cols if c in f_df.columns]].astype(str).to_dict(orient='records')
-                    prm = f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。3が適正、1が弱い、5がきついの前提で分析してください:\n{dic}"
+                    
+                    prm = (
+                        f"【重要：必ず日本語で回答してください】\n"
+                        f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。\n"
+                        "評価スコアは「3が適正」「1が弱い（緩い・低い）」「5がきつい（高い）」という前提で、プロの歯科技工士の視点から考察・分析を行ってください。\n"
+                        f"データ:\n{dic}"
+                    )
                     
                     try:
                         res_ai = call_gemini_with_fallback(prm, "")
@@ -519,7 +525,6 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0:
-                # ★修正箇所：文言変更と、表の青枠線（border）を「2px」に変更し、四方が正しく囲われるよう修正
                 html = f"""
                 <html><head><meta charset="utf-8"><title>品質分析レポート - {s_c}</title></head>
                 <body style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; padding: 30px; color: #1D1D1F; background-color: #F5F5F7;">
@@ -560,19 +565,19 @@ with tab3:
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">コンタクト</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">弱い（緩い）</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや弱い</td>
-                                <td style="padding: 10px; border: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">バイト</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">低い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや低い</td>
-                                <td style="padding: 10px; border: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">やや高い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">高い</td>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">適合</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">緩い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや緩い</td>
-                                <td style="padding: 10px; border: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 2px solid #007AFF; border-left: 2px solid #007AFF; border-right: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
                             </tr>
                         </table>
