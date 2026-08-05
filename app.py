@@ -184,7 +184,6 @@ tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
-    # ★ 文言を修正
     st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。")
     up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed", key=st.session_state["uploader_key"])
 
@@ -259,7 +258,7 @@ with tab1:
     if "r_list" in st.session_state:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📝 抽出データの確認と修正")
-        st.markdown('<div class="shortcut-guide">💡 左端の「✅ 選択」にチェックを入れると、下部のパネルから複数データを一気に変更できます。</div>', unsafe_allow_html=True)
+        st.info("💡 操作方法：左端の「✅ 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
         
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
@@ -367,8 +366,8 @@ with tab1:
 # ------------------------------------------
 with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
-    # ★ 文言を修正
-    st.markdown('<div class="shortcut-guide">⌨️ 各種項目を入力して、手動で登録ボタンを押して下さい。</div>', unsafe_allow_html=True)
+    # ★ 文言とスタイルを統一
+    st.info("⌨️ 各種項目を入力して、手動で登録ボタンを押して下さい。")
     with st.container(border=True):
         with st.form("manual_entry_form", clear_on_submit=True):
             m_file = st.file_uploader("📄 評価シート画像 (任意)", type=["jpg", "png", "pdf"])
@@ -412,7 +411,6 @@ with tab3:
             
             with st.container(border=True):
                 cf1, cf2, cf3, cf4, cf5 = st.columns(5)
-                # ★ 医院名を「あいうえお順（ソート）」に変更
                 s_c = cf1.selectbox("🏥 医院", ["すべて"] + sorted(list(df["clinic_name"].dropna().unique())))
                 s_st = cf2.selectbox("📄 シート", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
                 s_p = cf3.selectbox("📅 期間", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
@@ -521,7 +519,7 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0:
-                # ★修正箇所5：HTMLレポートをリッチ化（ご挨拶、スコア基準表、改善に向けたメッセージを追加）
+                # ★修正箇所：文言変更と、表の青枠線（border）を「2px」に変更し、四方が正しく囲われるよう修正
                 html = f"""
                 <html><head><meta charset="utf-8"><title>品質分析レポート - {s_c}</title></head>
                 <body style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; padding: 30px; color: #1D1D1F; background-color: #F5F5F7;">
@@ -530,7 +528,7 @@ with tab3:
                     
                     <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04); margin-bottom: 20px;">
                         <p style="margin: 0; font-size: 15px; line-height: 1.6;">
-                            平素より当センターの技工物をご愛顧いただき、誠にありがとうございます。<br>
+                            平素より当ラボの技工物をご愛顧いただき、誠にありがとうございます。<br>
                             先生方からいただいた評価シートのデータを元に、直近の品質傾向と分析レポートを作成いたしました。
                         </p>
                     </div>
@@ -548,33 +546,33 @@ with tab3:
                     <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04); margin-bottom: 20px;">
                         <h3 style="color: #1D1D1F; margin-top: 0;">💡 評価スコアの基準について</h3>
                         <p style="font-size: 14px; color: #8E8E93; margin-bottom: 15px;">
-                            当センターでは、以下の基準で品質を管理・分析しております。理想的な状態（適正）を「3」とし、そこからのズレを数値化することで、より精度の高い補綴物製作に役立てています。
+                            当ラボでは、以下の基準で品質を管理・分析しております。理想的な状態（適正）を「3」とし、そこからのズレを数値化することで、より精度の高い補綴物製作に役立てています。
                         </p>
                         <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 14px;">
                             <tr style="background-color: #F2F2F7;">
                                 <th style="padding: 10px; border: 1px solid #E5E5EA;">評価項目</th>
                                 <th style="padding: 10px; border: 1px solid #E5E5EA;">1</th>
                                 <th style="padding: 10px; border: 1px solid #E5E5EA;">2</th>
-                                <th style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; color: #007AFF;">3 (適正)</th>
+                                <th style="padding: 10px; border: 2px solid #007AFF; background-color: #E5F1FF; color: #007AFF;">3 (適正)</th>
                                 <th style="padding: 10px; border: 1px solid #E5E5EA;">4</th>
                                 <th style="padding: 10px; border: 1px solid #E5E5EA;">5</th>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">コンタクト</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">弱い（緩い）</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや弱い</td>
-                                <td style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">バイト</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">低い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや低い</td>
-                                <td style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">やや高い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">高い</td>
                             </tr>
                             <tr>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">適合</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">緩い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや緩い</td>
-                                <td style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 2px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
                                 <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
                             </tr>
                         </table>
@@ -583,8 +581,8 @@ with tab3:
                     <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
                         <h3 style="color: #1D1D1F; margin-top: 0;">📌 今後の品質改善に向けて</h3>
                         <p style="font-size: 15px; line-height: 1.6; color: #333; margin-bottom: 0;">
-                            先生からのフィードバックは、当センターの技術向上において最も重要な指標です。<br>
-                            上記のデータに基づき、特に適正値から誤差が見られる項目につきましては、担当技工士および製造部門に共有し、模型のトリミングやマージン設定、バイト調整のプロセスを継続的に見直して参ります。<br><br>
+                            先生からのフィードバックは、当ラボの技術向上において最も重要な指標です。<br>
+                            上記のデータに基づき、特に適正値から誤差が見られる項目につきましては、担当技工士および製造部門に共有し、バイト・コンタクトの強さやセメントスペースのパラメータを継続的に見直して参ります。<br><br>
                             引き続き、より良い技工物をご提供できるよう努めてまいりますので、忌憚のないご意見をよろしくお願い申し上げます。
                         </p>
                     </div>
@@ -691,8 +689,6 @@ with tab4:
                     st.rerun()
                 else:
                     st.warning("セルが直接変更されたデータはありません。")
-
-            # ★修正箇所1：「既存データのシート種別を一括更新」を削除しました。
 
             st.markdown("---")
             with st.expander("🧹 1年経過した古い画像を削除（文字データは残す・容量節約）", expanded=False):
