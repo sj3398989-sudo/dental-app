@@ -137,7 +137,6 @@ def display_file_preview(file_obj):
 # ==========================================
 # 4. 画面描画 (Tabs)
 # ==========================================
-# ★ アップローダーをリセットするためのセッション管理
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = "uploader_" + str(time.time())
 
@@ -149,13 +148,10 @@ tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
     st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。一括保存後、自動で次の画像を入れられるようクリアされます。")
-    # ★ 動的キーを付与してリセット可能にする
     up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed", key=st.session_state["uploader_key"])
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
-            
-            # ★ ジルコニアのブリッジ処理ルールを追加
             prm = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
                 "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
@@ -220,7 +216,7 @@ with tab1:
 
     if "r_list" in st.session_state:
         st.markdown("<br>### 📝 抽出データの確認と修正", unsafe_allow_html=True)
-        st.markdown('<div class="shortcut-guide">⌨️ Excelのように表を直接クリックして修正できます。<b>Shift+クリック</b>で複数選択し、<b>Ctrl+V</b>で一括ペーストも可能です。</div>', unsafe_allow_html=True)
+        st.markdown('<div class="shortcut-guide">💡 左端の「✅ 選択」にチェックを入れると、下部のパネルから複数データを一気に変更できます。</div>', unsafe_allow_html=True)
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
         with st.container(border=True):
@@ -235,6 +231,7 @@ with tab1:
             try: dt = date.fromisoformat(str(item.get("completion_date", ""))[:10])
             except: dt = date.today()
             formatted_data.append({
+                "✅ 選択": False,  # ★ チェックボックス用の列を追加
                 "画像No": item.get("_f_idx", 0) + 1,
                 "医院名": item.get("clinic_name", ""), "患者名": item.get("patient_name", ""),
                 "伝票番号": item.get("slip_number", ""), "完成日": dt,
@@ -245,9 +242,12 @@ with tab1:
                 "コメント": item.get("comments", ""), "_f_idx": item.get("_f_idx")
             })
         
+        df_edit = pd.DataFrame(formatted_data)
+        
         edited_df = st.data_editor(
-            pd.DataFrame(formatted_data),
+            df_edit,
             column_config={
+                "✅ 選択": st.column_config.CheckboxColumn("✅ 選択", default=False),
                 "画像No": st.column_config.NumberColumn("画像No", disabled=True, width="small"),
                 "医院名": st.column_config.TextColumn("🏥 医院名", required=True),
                 "患者名": st.column_config.TextColumn("👤 患者名", required=True),
@@ -265,6 +265,25 @@ with tab1:
             },
             use_container_width=True, hide_index=True, num_rows="dynamic", height=400
         )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # ★ チェックを入れたものに対する一括変更パネル（AI一括側）
+        selected_indices = edited_df[edited_df["✅ 選択"] == True].index.tolist()
+        if len(selected_indices) > 0:
+            st.markdown(f"**☑️ 選択した {len(selected_indices)} 件のデータを一括変更（保存前）**")
+            with st.container(border=True):
+                bc1, bc2, bc3 = st.columns(3)
+                b_sheet = bc1.selectbox("📄 シート種別を一括変更", ["変更しない"] + SHEET_TYPE_LIST, key="b1_sh")
+                b_type = bc2.selectbox("🦷 種別を一括変更", ["変更しない"] + TYPE_LIST, key="b1_ty")
+                b_mat = bc3.selectbox("💎 材料を一括変更", ["変更しない"] + MATERIAL_LIST, key="b1_ma")
+                
+                if st.button("適用する（表に反映）"):
+                    for idx in selected_indices:
+                        if b_sheet != "変更しない": st.session_state["r_list"][idx]["sheet_type"] = b_sheet
+                        if b_type != "変更しない": st.session_state["r_list"][idx]["restoration_type"] = b_type
+                        if b_mat != "変更しない": st.session_state["r_list"][idx]["material"] = b_mat
+                    st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
         
@@ -295,7 +314,6 @@ with tab1:
                         db.table("evaluations").insert(insert_data).execute()
                         
                 del st.session_state["r_list"], st.session_state["f_list"]
-                # ★ アップローダーのキーを更新して強制クリア
                 st.session_state["uploader_key"] = "uploader_" + str(time.time())
                 st.success("🎉 データの一括保存が完了しました！")
                 time.sleep(1.5)
@@ -497,16 +515,19 @@ with tab4:
                 df = df[df['patient_name'].astype(str).str.contains(q, na=False) | df['clinic_name'].astype(str).str.contains(q, na=False)]
 
             st.markdown("---")
-            st.markdown("#### 📝 データの一括編集（Excelのように直接書き換え）")
-            st.info("💡 操作のコツ：セルを1回クリックして「青い枠」がついた状態で、Shiftキーを押しながら別のセルをクリックすると複数選択できます。その状態で Ctrl+V（ペースト）すると一括で変更が可能です。")
+            st.markdown("#### 📝 データの一括編集（☑️ チェックボックスで選択）")
+            st.info("💡 操作方法：左端の「✅ 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
             
             edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments']
             df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
+            # ★ チェックボックス用の列を追加
+            df_for_edit.insert(0, "✅ 選択", False)
             
             edited_df = st.data_editor(
                 df_for_edit,
                 use_container_width=True, hide_index=True, key="bulk_edit_editor", disabled=["id"], 
                 column_config={
+                    "✅ 選択": st.column_config.CheckboxColumn("✅ 選択", default=False),
                     "id": st.column_config.NumberColumn("ID", width="small"),
                     "completion_date": st.column_config.DateColumn("📅 完成日"),
                     "clinic_name": st.column_config.TextColumn("🏥 医院名", required=True),
@@ -524,7 +545,36 @@ with tab4:
                 height=500
             )
 
-            if st.button("💾 編集内容を一括保存", type="primary"):
+            # ★ チェックを入れたものに対する一括変更パネル（保存済みデータ側）
+            selected_rows = edited_df[edited_df["✅ 選択"] == True]
+            if len(selected_rows) > 0:
+                st.markdown(f"**☑️ 選択した {len(selected_rows)} 件のデータを一括変更**")
+                with st.container(border=True):
+                    bc1, bc2, bc3 = st.columns(3)
+                    b_sheet = bc1.selectbox("📄 シート種別を一括変更", ["変更しない"] + SHEET_TYPE_LIST, key="b4_sh")
+                    b_type = bc2.selectbox("🦷 種別を一括変更", ["変更しない"] + TYPE_LIST, key="b4_ty")
+                    b_mat = bc3.selectbox("💎 材料を一括変更", ["変更しない"] + MATERIAL_LIST, key="b4_ma")
+                    
+                    if st.button("🚀 チェックした項目を一括更新（DB保存）", type="primary"):
+                        update_data = {}
+                        if b_sheet != "変更しない": update_data["sheet_type"] = b_sheet
+                        if b_type != "変更しない": update_data["restoration_type"] = b_type
+                        if b_mat != "変更しない": update_data["material"] = b_mat
+                        
+                        if update_data:
+                            with st.spinner("一括更新中..."):
+                                target_ids = selected_rows["id"].tolist()
+                                for tid in target_ids:
+                                    db.table("evaluations").update(update_data).eq("id", int(tid)).execute()
+                            st.success("一括更新が完了しました！画面を再読み込みします。")
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.warning("変更する項目を選んでください。")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if st.button("💾 手動での直接編集内容を保存", type="primary"):
                 changes = st.session_state["bulk_edit_editor"].get("edited_rows", {})
                 if changes:
                     with st.spinner("データベースを更新中..."):
@@ -532,6 +582,7 @@ with tab4:
                             row_id = int(df_for_edit.iloc[row_idx]['id'])
                             update_data = {}
                             for col_name, new_val in col_changes.items():
+                                if col_name == '✅ 選択': continue # 選択チェックはDBに保存しない
                                 if col_name == 'completion_date' and new_val is not None:
                                     update_data[col_name] = str(new_val)[:10]
                                 else:
@@ -539,11 +590,11 @@ with tab4:
                             if update_data:
                                 db.table("evaluations").update(update_data).eq("id", row_id).execute()
                                 
-                    st.success(f"🎉 {len(changes)}件のデータを一括更新しました！画面を再読み込みします。")
+                    st.success(f"🎉 編集内容を更新しました！画面を再読み込みします。")
                     time.sleep(1.5)
                     st.rerun()
                 else:
-                    st.warning("変更されたデータはありません。")
+                    st.warning("セルが直接変更されたデータはありません。")
 
             st.markdown("---")
             with st.expander("🔧 既存データのシート種別を一括更新", expanded=False):
