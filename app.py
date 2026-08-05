@@ -153,7 +153,6 @@ def save_single_evaluation(d, file_obj=None):
         "comments": d.get("comments", ""), "image_url": img_url
     }).execute()
 
-# ★修正箇所1：ブラウザでブロックされるPDF埋め込みをダウンロードボタン方式に切り替え
 def display_file_preview(file_obj):
     if not file_obj:
         st.write("ファイルがありません")
@@ -185,7 +184,8 @@ tab1, tab2, tab3, tab4 = st.tabs(["🤖 AI一括", "✍️ 手動", "📊 分析
 # ------------------------------------------
 with tab1:
     st.markdown("### 📄 評価シートのアップロード")
-    st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。一括保存後、自動で次の画像を入れられるようクリアされます。")
+    # ★ 文言を修正
+    st.info("写真やPDFを選択し、「一括AI解析」ボタンを押してください。")
     up_files = st.file_uploader("画像/PDF(複数選択可)", type=["jpg", "png", "pdf"], accept_multiple_files=True, label_visibility="collapsed", key=st.session_state["uploader_key"])
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
@@ -257,7 +257,6 @@ with tab1:
             st.toast(f"合計 {len(r_list)} 件のデータを検出しました！", icon="✨")
 
     if "r_list" in st.session_state:
-        # ★修正箇所2：見出しとHTMLタグの干渉による文字化けを解消
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📝 抽出データの確認と修正")
         st.markdown('<div class="shortcut-guide">💡 左端の「✅ 選択」にチェックを入れると、下部のパネルから複数データを一気に変更できます。</div>', unsafe_allow_html=True)
@@ -368,7 +367,8 @@ with tab1:
 # ------------------------------------------
 with tab2:
     st.markdown("### ✍️ 新規データの手動入力")
-    st.markdown('<div class="shortcut-guide">⌨️ 登録ボタンを押すと、入力欄とアップロードされた画像は自動で空（リセット）になります。</div>', unsafe_allow_html=True)
+    # ★ 文言を修正
+    st.markdown('<div class="shortcut-guide">⌨️ 各種項目を入力して、手動で登録ボタンを押して下さい。</div>', unsafe_allow_html=True)
     with st.container(border=True):
         with st.form("manual_entry_form", clear_on_submit=True):
             m_file = st.file_uploader("📄 評価シート画像 (任意)", type=["jpg", "png", "pdf"])
@@ -412,7 +412,8 @@ with tab3:
             
             with st.container(border=True):
                 cf1, cf2, cf3, cf4, cf5 = st.columns(5)
-                s_c = cf1.selectbox("🏥 医院", ["すべて"] + list(df["clinic_name"].dropna().unique()))
+                # ★ 医院名を「あいうえお順（ソート）」に変更
+                s_c = cf1.selectbox("🏥 医院", ["すべて"] + sorted(list(df["clinic_name"].dropna().unique())))
                 s_st = cf2.selectbox("📄 シート", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
                 s_p = cf3.selectbox("📅 期間", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
                 s_m = cf4.selectbox("💎 材料", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
@@ -520,19 +521,72 @@ with tab3:
 
             st.markdown("<br>", unsafe_allow_html=True)
             if len(f_df) > 0:
+                # ★修正箇所5：HTMLレポートをリッチ化（ご挨拶、スコア基準表、改善に向けたメッセージを追加）
                 html = f"""
-                <html><head><meta charset="utf-8"><title>品質分析レポート</title></head>
+                <html><head><meta charset="utf-8"><title>品質分析レポート - {s_c}</title></head>
                 <body style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; padding: 30px; color: #1D1D1F; background-color: #F5F5F7;">
-                    <h2 style="color: #1D1D1F; border-bottom: 2px solid #E5E5EA; padding-bottom: 10px;">AI品質管理カルテ (大阪センター)</h2>
+                    <h2 style="color: #1D1D1F; border-bottom: 2px solid #E5E5EA; padding-bottom: 10px;">AI品質管理カルテ (大阪センター) - 品質分析レポート</h2>
                     <p style="color: #8E8E93; font-weight: 500;">医院: {s_c} | 種別: {s_st} | 材料: {s_m} | 出力日: {date.today().isoformat()}</p>
-                    <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+                    
+                    <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04); margin-bottom: 20px;">
+                        <p style="margin: 0; font-size: 15px; line-height: 1.6;">
+                            平素より当センターの技工物をご愛顧いただき、誠にありがとうございます。<br>
+                            先生方からいただいた評価シートのデータを元に、直近の品質傾向と分析レポートを作成いたしました。
+                        </p>
+                    </div>
+
+                    <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04); margin-bottom: 20px;">
                         <h3 style="color: #1D1D1F; margin-top: 0;">📊 総合評価（適正スコア「3」の割合）</h3>
                         <ul style="font-size: 16px; line-height: 1.8;">
                             <li>対象件数: <strong>{len(f_df)} 件</strong></li>
-                            <li>コンタクト適正率: <strong>{c_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均: {c_m:.2f})</span></li>
-                            <li>バイト適正率: <strong>{b_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均: {b_m:.2f})</span></li>
-                            <li>適合適正率: <strong>{f_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均: {f_m:.2f})</span></li>
+                            <li>コンタクト適正率: <strong>{c_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均点: {c_m:.2f})</span></li>
+                            <li>バイト適正率: <strong>{b_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均点: {b_m:.2f})</span></li>
+                            <li>適合適正率: <strong>{f_opt:.1f}%</strong> <span style="color:#8E8E93;">(平均点: {f_m:.2f})</span></li>
                         </ul>
+                    </div>
+                    
+                    <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04); margin-bottom: 20px;">
+                        <h3 style="color: #1D1D1F; margin-top: 0;">💡 評価スコアの基準について</h3>
+                        <p style="font-size: 14px; color: #8E8E93; margin-bottom: 15px;">
+                            当センターでは、以下の基準で品質を管理・分析しております。理想的な状態（適正）を「3」とし、そこからのズレを数値化することで、より精度の高い補綴物製作に役立てています。
+                        </p>
+                        <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 14px;">
+                            <tr style="background-color: #F2F2F7;">
+                                <th style="padding: 10px; border: 1px solid #E5E5EA;">評価項目</th>
+                                <th style="padding: 10px; border: 1px solid #E5E5EA;">1</th>
+                                <th style="padding: 10px; border: 1px solid #E5E5EA;">2</th>
+                                <th style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; color: #007AFF;">3 (適正)</th>
+                                <th style="padding: 10px; border: 1px solid #E5E5EA;">4</th>
+                                <th style="padding: 10px; border: 1px solid #E5E5EA;">5</th>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">コンタクト</td>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA;">弱い（緩い）</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや弱い</td>
+                                <td style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">バイト</td>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA;">低い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや低い</td>
+                                <td style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA;">やや高い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">高い</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA; font-weight: bold; background-color: #FAFAFA;">適合</td>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA;">緩い</td><td style="padding: 10px; border: 1px solid #E5E5EA;">やや緩い</td>
+                                <td style="padding: 10px; border: 1px solid #007AFF; background-color: #E5F1FF; font-weight: bold; color: #007AFF;">適正</td>
+                                <td style="padding: 10px; border: 1px solid #E5E5EA;">ややきつい</td><td style="padding: 10px; border: 1px solid #E5E5EA;">きつい</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; box-shadow: 0 4px 16px rgba(0,0,0,0.04);">
+                        <h3 style="color: #1D1D1F; margin-top: 0;">📌 今後の品質改善に向けて</h3>
+                        <p style="font-size: 15px; line-height: 1.6; color: #333; margin-bottom: 0;">
+                            先生からのフィードバックは、当センターの技術向上において最も重要な指標です。<br>
+                            上記のデータに基づき、特に適正値から誤差が見られる項目につきましては、担当技工士および製造部門に共有し、模型のトリミングやマージン設定、バイト調整のプロセスを継続的に見直して参ります。<br><br>
+                            引き続き、より良い技工物をご提供できるよう努めてまいりますので、忌憚のないご意見をよろしくお願い申し上げます。
+                        </p>
                     </div>
                 </body></html>
                 """
@@ -638,16 +692,7 @@ with tab4:
                 else:
                     st.warning("セルが直接変更されたデータはありません。")
 
-            st.markdown("---")
-            with st.expander("🔧 既存データのシート種別を一括更新", expanded=False):
-                st.info("過去に入力したすべてのデータの「シート種別」を、一括で「セパレートレス模型」に更新します。")
-                if st.button("⚠️ 全データの種別を「セパレートレス模型」に更新する"):
-                    try:
-                        db.table("evaluations").update({"sheet_type": "セパレートレス模型"}).neq("id", 0).execute()
-                        st.success("🎉 全データのシート種別を「セパレートレス模型」に更新しました！")
-                        time.sleep(1.5)
-                        st.rerun()
-                    except Exception as e: st.error(f"一括更新エラー: {e}")
+            # ★修正箇所1：「既存データのシート種別を一括更新」を削除しました。
 
             st.markdown("---")
             with st.expander("🧹 1年経過した古い画像を削除（文字データは残す・容量節約）", expanded=False):
