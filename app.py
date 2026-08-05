@@ -44,7 +44,8 @@ st.markdown('<div class="custom-title">🦷 AI品質管理カルテ <span style=
 # 2. 定数 & データベース設定
 # ==========================================
 SHEET_TYPE_LIST = ["セパレートレス模型", "IOS"]
-MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "チタン", "3Dプリント", "その他"]
+# ★ 材料リストに「PEEK」を追加
+MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "チタン", "3Dプリント", "PEEK", "その他"]
 TYPE_LIST = ["クラウン（単冠）", "ブリッジ", "インレー", "インプラント", "義歯", "その他"]
 
 KEY = st.secrets.get("GEMINI_API_KEY")
@@ -154,16 +155,22 @@ with tab1:
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
+            
+            # ★ 製品名の略称ルールと、IOSシートの判定ルールを追加
             prm = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
-                "1. シート上に「IOS」や「セパレートレス」などの記載やチェックがあれば判別してください（不明な場合は「セパレートレス模型」）。\n"
-                "2. 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
-                "3. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
-                "キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
-                "sheet_type (IOS または セパレートレス模型), "
-                f"restoration_type ({', '.join(TYPE_LIST)} の中から最も近いもの), "
-                f"material ({', '.join(MATERIAL_LIST)} の中から最も近いもの), "
-                "tooth_position, contact, bite, fit, comments"
+                "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
+                "2. 製品名からの種別・材料の判定ルール（製品名欄の記載から以下のルールで自動推測してください）:\n"
+                "   - 「CAD冠」が含まれる場合 => material: CAD/CAM冠, restoration_type: クラウン（単冠）\n"
+                "   - 「CADIN」「CADインレー」「CADイン」が含まれる場合 => material: CAD/CAM冠, restoration_type: インレー\n"
+                "   - 「ZR」や「ジル」から始まる場合 => material: ジルコニア\n"
+                "   - 「ZR-IN」「ZRインレー」が含まれる場合 => material: ジルコニア, restoration_type: インレー\n"
+                "   - 「ZR-C」や「ZR-E」が含まれる場合 => material: ジルコニア, restoration_type: クラウン（単冠）\n"
+                f"   ※上記ルールに当てはまらない場合は、restoration_typeは {', '.join(TYPE_LIST)} から、materialは {', '.join(MATERIAL_LIST)} から最も近いものを選択。\n"
+                "3. スコアの抽出: 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
+                "4. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
+                "出力キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
+                "sheet_type, restoration_type, material, tooth_position, contact, bite, fit, comments"
             )
             ai_config = types.GenerateContentConfig(temperature=0.0, response_mime_type="application/json")
             
@@ -476,7 +483,6 @@ with tab4:
     if db:
         res = db.table("evaluations").select("*").order("completion_date", desc=True).execute()
         if res.data:
-            # ★ここで日付と数値の型を整えることで data_editor のエラーを回避
             df = prep_dataframe(pd.DataFrame(res.data))
             
             with st.container(border=True):
