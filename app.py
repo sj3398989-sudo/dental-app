@@ -43,7 +43,6 @@ st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layou
 if is_new_theme_created:
     st.info("🎨 新しいテーマカラー（ブルー）を設定しました。完全に反映させるため、ブラウザを「再読み込み（F5キー）」してください。")
 
-# テーマ設定で色を管理するため、余計なCSSは削ぎ落とし、カードの角丸など最小限の装飾のみ残しています
 st.markdown("""
 <style>
     .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
@@ -154,17 +153,22 @@ def save_single_evaluation(d, file_obj=None):
         "comments": d.get("comments", ""), "image_url": img_url
     }).execute()
 
+# ★修正箇所1：ブラウザでブロックされるPDF埋め込みをダウンロードボタン方式に切り替え
 def display_file_preview(file_obj):
     if not file_obj:
         st.write("ファイルがありません")
         return
     if "pdf" in file_obj.type:
-        try:
-            b64_pdf = base64.b64encode(file_obj.getvalue()).decode('utf-8')
-            st.markdown(f'<iframe src="data:application/pdf;base64,{b64_pdf}" width="100%" height="450" style="border: 1px solid #E5E5EA; border-radius: 12px;"></iframe>', unsafe_allow_html=True)
-        except Exception: st.warning("PDFを表示できません")
+        st.info("🔒 ブラウザのセキュリティ制限により、PDFの直接表示がブロックされています。")
+        st.download_button(
+            label="📄 PDFファイルを開いて確認する",
+            data=file_obj.getvalue(),
+            file_name=file_obj.name,
+            mime="application/pdf",
+            type="secondary"
+        )
     else:
-        try: st.image(file_obj.getvalue(), use_container_width=True, style={"border-radius": "12px"})
+        try: st.image(file_obj.getvalue(), use_container_width=True)
         except Exception: st.warning("画像を表示できません")
 
 
@@ -253,8 +257,11 @@ with tab1:
             st.toast(f"合計 {len(r_list)} 件のデータを検出しました！", icon="✨")
 
     if "r_list" in st.session_state:
-        st.markdown("<br>### 📝 抽出データの確認と修正", unsafe_allow_html=True)
+        # ★修正箇所2：見出しとHTMLタグの干渉による文字化けを解消
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("### 📝 抽出データの確認と修正")
         st.markdown('<div class="shortcut-guide">💡 左端の「✅ 選択」にチェックを入れると、下部のパネルから複数データを一気に変更できます。</div>', unsafe_allow_html=True)
+        
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
         with st.container(border=True):
