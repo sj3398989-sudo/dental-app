@@ -1,6 +1,7 @@
 streamlit
-google-genai
-supabase
-pillow
 pandas
 plotly
+supabase
+Pillow
+google-genai
+pydantic
