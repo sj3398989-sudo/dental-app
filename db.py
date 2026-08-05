@@ -3,6 +3,7 @@ import pandas as pd
 from supabase import create_client
 import uuid
 import io
+import hashlib
 from PIL import Image, ImageOps
 from config import URL, S_KEY, STORAGE_BUCKET
 
@@ -12,6 +13,14 @@ def get_db():
     except Exception as e:
         st.error(f"データベース接続エラー: {e}")
         return None
+
+# ★ 個人情報保護: 患者名を不可逆なハッシュ値（匿名ID）に変換する関数
+def hash_patient_name(name):
+    if not name or not isinstance(name, str): return ""
+    clean_name = name.strip()
+    if not clean_name: return ""
+    # SHA-256でハッシュ化し、先頭8文字を匿名IDとして使用
+    return hashlib.sha256(clean_name.encode('utf-8')).hexdigest()[:8]
 
 def prep_dataframe(df):
     if not df.empty:
