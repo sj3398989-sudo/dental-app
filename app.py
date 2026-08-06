@@ -43,29 +43,18 @@ st.set_page_config(page_title="AI品質管理カルテ", page_icon="🦷", layou
 if is_new_theme_created:
     st.info("🎨 新しいテーマカラー（ブルー）を設定しました。完全に反映させるため、ブラウザを「再読み込み（F5キー）」してください。")
 
-# 洗練されたApple風UIスタイルの追加調整
 st.markdown("""
 <style>
     .stApp { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif !important; }
     #MainMenu, header, footer {visibility: hidden;}
     .custom-title { font-size: clamp(1.8rem, 5vw, 2.4rem); font-weight: 700; letter-spacing: -0.02em; color: #1D1D1F; margin-bottom: 20px; }
-    
-    /* ボタンのホバーアクション & アニメーション強化 */
     .stButton>button[kind="primary"] { border-radius: 12px !important; font-weight: 600 !important; font-size: 15px !important; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2) !important; transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1) !important; }
     .stButton>button[kind="primary"]:hover { transform: translateY(-1px) scale(0.99) !important; box-shadow: 0 6px 16px rgba(0, 122, 255, 0.3) !important; }
-    
-    /* コンテナの角丸と立体感 */
     div[data-testid="stVerticalBlock"] > div[style*="border"] { border-radius: 18px !important; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important; padding: 24px !important; border: 1px solid rgba(0,0,0,0.06) !important; background-color: #FFFFFF !important; }
     .streamlit-expanderHeader { border-radius: 14px !important; border: 1px solid #E5E5EA !important; font-weight: 600 !important; background-color: #FFFFFF !important; }
-    
-    /* 入力フォームの美質化 */
     input, select, textarea { border-radius: 10px !important; transition: all 0.2s ease !important; }
-    
-    /* メトリックカード */
     .metric-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.6); text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.04); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
-    
-    /* ガイド・アラート類 */
     .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
@@ -116,19 +105,10 @@ def safe_int(val, default=3):
     try: return max(1, min(5, int(float(val))))
     except (ValueError, TypeError): return default
 
-# ★ 修正箇所：使用するAPIモデルを最新の3.6→3.5→3.5Lite→3の順に更新しました
 def call_gemini_with_fallback(contents, prm=None, ai_config=None):
     if not KEY: raise ValueError("GEMINI_API_KEY が設定されていません。")
     client = genai.Client(api_key=KEY)
-    
-    # ここで最新モデルを指定します
-    models = [
-        'gemini-3.6-flash',
-        'gemini-3.5-flash',
-        'gemini-3.5-flash-lite',
-        'gemini-3-flash'
-    ]
-    
+    models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash']
     payload = [contents, prm] if prm else contents
     last_exception = None
     for idx, model in enumerate(models):
@@ -628,20 +608,24 @@ with tab4:
     if not global_df.empty:
         df = global_df.copy()
         
+        # ★ 検索ボタン付きの入力レイアウトに変更
         with st.container(border=True):
-            col_s1, col_s2 = st.columns([3, 1])
-            q = col_s1.text_input("🔍 患者名・医院名で検索")
-            col_s2.markdown("<br>", unsafe_allow_html=True)
-            col_s2.download_button("📥 CSVダウンロード", df.to_csv(index=False).encode('utf-8-sig'), "evaluations.csv", "text/csv", use_container_width=True)
+            col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
+            search_query = col_s1.text_input("🔍 患者名・医院名で検索", placeholder="キーワードを入力...")
+            search_btn = col_s2.button("🔍 検索", type="primary", use_container_width=True)
+            col_s3.markdown("<br>", unsafe_allow_html=True)
+            col_s3.download_button("📥 CSVダウンロード", df.to_csv(index=False).encode('utf-8-sig'), "evaluations.csv", "text/csv", use_container_width=True)
                 
-        if q:
-            df = df[df['patient_name'].astype(str).str.contains(q, na=False) | df['clinic_name'].astype(str).str.contains(q, na=False)]
+        # 検索ボタンが押された、または文字が入力されている場合にフィルタリング
+        if search_query:
+            df = df[df['patient_name'].astype(str).str.contains(search_query, na=False) | df['clinic_name'].astype(str).str.contains(search_query, na=False)]
 
         st.markdown("---")
         st.markdown("#### 📝 データの一括編集（☑️ チェックボックスで選択）")
-        st.info("💡 操作方法：左端の「✅ 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
+        st.info("💡 操作方法：左端の "✅ 選択" にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
         
-        edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments']
+        # image_url をカラムリストに追加
+        edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments', 'image_url']
         df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
         df_for_edit.insert(0, "✅ 選択", False)
         
@@ -663,6 +647,8 @@ with tab4:
                 "bite": st.column_config.NumberColumn("バイト", min_value=1, max_value=5),
                 "fit": st.column_config.NumberColumn("適合", min_value=1, max_value=5),
                 "comments": st.column_config.TextColumn("💬 コメント"),
+                # 画像をサムネイル表示するカラム設定
+                "image_url": st.column_config.ImageColumn("🖼️ シート画像", width="medium"),
             },
             height=500
         )
