@@ -252,7 +252,7 @@ with tab1:
     if "r_list" in st.session_state:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📝 抽出データの確認と修正")
-        st.info("💡 操作方法：左端の「✅ 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
+        st.info("💡 操作方法：左端の「 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
         
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
@@ -608,7 +608,7 @@ with tab4:
     if not global_df.empty:
         df = global_df.copy()
         
-        # ★ 検索ボタン付きの入力レイアウトに変更
+        # 検索ボックスと検索ボタン・CSVダウンロードの配置
         with st.container(border=True):
             col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
             search_query = col_s1.text_input("🔍 患者名・医院名で検索", placeholder="キーワードを入力...")
@@ -622,9 +622,8 @@ with tab4:
 
         st.markdown("---")
         st.markdown("#### 📝 データの一括編集（☑️ チェックボックスで選択）")
-        st.info("💡 操作方法：左端の "✅ 選択" にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
+        st.info("💡 操作方法：左端のチェックボックスにチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
         
-        # image_url をカラムリストに追加
         edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments', 'image_url']
         df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
         df_for_edit.insert(0, "✅ 選択", False)
@@ -647,7 +646,6 @@ with tab4:
                 "bite": st.column_config.NumberColumn("バイト", min_value=1, max_value=5),
                 "fit": st.column_config.NumberColumn("適合", min_value=1, max_value=5),
                 "comments": st.column_config.TextColumn("💬 コメント"),
-                # 画像をサムネイル表示するカラム設定
                 "image_url": st.column_config.ImageColumn("🖼️ シート画像", width="medium"),
             },
             height=500
