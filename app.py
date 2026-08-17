@@ -108,7 +108,8 @@ def safe_int(val, default=3):
 def call_gemini_with_fallback(contents, prm=None, ai_config=None):
     if not KEY: raise ValueError("GEMINI_API_KEY が設定されていません。")
     client = genai.Client(api_key=KEY)
-    models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash']
+    # ★ ここに gemini-3.7-flash を最優先として追加しました
+    models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash']
     payload = [contents, prm] if prm else contents
     last_exception = None
     for idx, model in enumerate(models):
@@ -252,7 +253,7 @@ with tab1:
     if "r_list" in st.session_state:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("### 📝 抽出データの確認と修正")
-        st.info("💡 操作方法：左端の「 選択」にチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
+        st.info("💡 操作方法：左端のチェックボックスにチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
         
         r_list, f_list = st.session_state["r_list"], st.session_state["f_list"]
         
