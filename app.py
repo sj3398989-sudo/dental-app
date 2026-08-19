@@ -108,7 +108,6 @@ def safe_int(val, default=3):
 def call_gemini_with_fallback(contents, prm=None, ai_config=None):
     if not KEY: raise ValueError("GEMINI_API_KEY が設定されていません。")
     client = genai.Client(api_key=KEY)
-    # 最優先を gemini-3.7-flash に設定
     models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash']
     payload = [contents, prm] if prm else contents
     last_exception = None
@@ -188,6 +187,9 @@ with tab1:
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
+            # ★ 既存の医院リストをデータベースから取得してプロンプトに組み込む
+            clinic_list_str = ", ".join(sorted(list(global_df["clinic_name"].dropna().unique()))) if not global_df.empty else "登録なし"
+            
             prm = (
                 "このファイルには1枚または複数の補綴物評価シートが含まれています。以下の手順に従い抽出してください。\n\n"
                 "1. シート種別の判定: シート上部に「IOSデータ受注」と記載がある場合、または「IOS」の指定がある場合は sheet_type を「IOS」にしてください。不明な場合は「セパレートレス模型」にしてください。\n"
@@ -199,7 +201,10 @@ with tab1:
                 "   - 「ZR-C」や「ZR-E」が含まれる場合 => material: ジルコニア, restoration_type: クラウン（単冠）\n"
                 f"   ※上記に当てはまらない場合は、restoration_typeは {', '.join(TYPE_LIST)} から、materialは {', '.join(MATERIAL_LIST)} から最も近いものを選択。\n"
                 "3. スコアの抽出: 丸（〇）で囲まれている数字やチェック（✓）が入っている評価数値（contact, bite, fit: 1〜5）を正確に読み取ってください。\n"
-                "4. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
+                "4. 医院名の自動名寄せ: 抽出した医院名が略称や表記揺れであっても、以下の【登録医院リスト】に同一と判断できるものがあれば、リスト内の正式名称で出力してください。\n"
+                "   ただし、「たなか歯科」と「田中歯科」のように表記違いの候補が存在して確信が持てない場合や、リストに該当しない新規医院の場合は、無理に変換せず読み取ったままの文字を出力してください。\n"
+                f"   【登録医院リスト】: {clinic_list_str}\n"
+                "5. 読み取れない・未記入項目は空文字（\"\"）にしてください。\n"
                 "出力キー: clinic_name, patient_name, slip_number, completion_date (YYYY-MM-DD), "
                 "sheet_type, restoration_type, material, tooth_position, contact, bite, fit, comments"
             )
@@ -645,7 +650,7 @@ with tab4:
     if not global_df.empty:
         df = global_df.copy()
         
-        # ★ 検索ボックス（ラベルを隠してボタンとの高さを完璧に合わせる）
+        # 検索ボックス（ラベルを隠してボタンとの高さを完璧に合わせる）
         with st.container(border=True):
             col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
             search_query = col_s1.text_input("検索", placeholder="🔍 患者名・医院名で検索...", label_visibility="collapsed")
@@ -696,7 +701,7 @@ with tab4:
                 b_type = bc2.selectbox("🦷 種別を一括変更", ["変更しない"] + TYPE_LIST, key="b4_ty")
                 b_mat = bc3.selectbox("💎 材料を一括変更", ["変更しない"] + MATERIAL_LIST, key="b4_ma")
                 
-                # ★ 更新ボタンと削除ボタンを横並びに配置
+                # 更新ボタンと削除ボタンを横並びに配置
                 btn_c1, btn_c2 = st.columns(2)
                 
                 if btn_c1.button("🚀 チェックした項目を一括更新（DB保存）", type="primary", use_container_width=True):
@@ -719,7 +724,7 @@ with tab4:
                 if btn_c2.button("🗑️ 選択したデータを一括削除", use_container_width=True):
                     st.session_state.confirm_bulk_del = True
                     
-            # ★ 削除前の確認ポップアップ表示
+            # 削除前の確認ポップアップ表示
             if st.session_state.get("confirm_bulk_del", False):
                 st.error(f"⚠️ 本当に選択した {len(selected_rows)} 件のデータを完全に削除しますか？ この操作は元に戻せません。")
                 del_c1, del_c2 = st.columns(2)
@@ -761,6 +766,30 @@ with tab4:
                 st.warning("セルが直接変更されたデータはありません。")
 
         st.markdown("---")
+        
+        # ★ 新機能：医院名の名寄せ・一括置換ツール
+        with st.expander("🏥 医院名の名寄せ・統合（一括置換）", expanded=False):
+            st.info("表記揺れ（例：「田中」「田中歯科」）を正しい医院名（例：「田中歯科医院」）に一括で統合します。")
+            all_clinics = sorted(list(df["clinic_name"].dropna().unique()))
+            
+            m_col1, m_col2 = st.columns(2)
+            old_name = m_col1.selectbox("変更対象の医院名（誤表記・略称）", ["選択してください"] + all_clinics, key="merge_old")
+            new_name = m_col2.selectbox("統合先の正規医院名", ["選択してください"] + all_clinics, key="merge_new")
+            
+            if st.button("⚠️ 指定した医院名を統合する", type="primary"):
+                if old_name == "選択してください" or new_name == "選択してください":
+                    st.warning("変更対象と統合先の両方を選択してください。")
+                elif old_name == new_name:
+                    st.warning("変更対象と統合先が同じです。")
+                else:
+                    with st.spinner("医院名を統合中..."):
+                        db.table("evaluations").update({"clinic_name": new_name}).eq("clinic_name", old_name).execute()
+                    st.success(f"🎉 「{old_name}」を「{new_name}」に統合しました！画面を再読み込みします。")
+                    time.sleep(1.5)
+                    st.rerun()
+
+        st.markdown("---")
+        
         with st.expander("🧹 1年経過した古い画像を削除（文字データは残す・容量節約）", expanded=False):
             st.info("完成日から1年以上経過した「画像ファイルのみ」をストレージから削除します。データ分析用のテキストは残ります。")
             if 'completion_date' in df.columns:
@@ -775,6 +804,16 @@ with tab4:
                         st.success("🎉 古い画像の削除が完了しました！")
                         time.sleep(1.5)
                         st.rerun()
+
+        st.markdown("---")
+        with st.expander("🗑️ データの一括削除（取り扱い注意）", expanded=False):
+            st.warning("選択したデータをDBから完全に消去します。")
+            selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
+            if selected_ids and st.button(f"⚠️ 選択した {len(selected_ids)} 件のデータを完全に削除する"):
+                for tid in selected_ids: db.table("evaluations").delete().eq("id", tid).execute()
+                st.success("削除完了しました！")
+                time.sleep(1)
+                st.rerun()
 
         st.markdown("---")
         with st.expander("🚑 万が一のデータ復旧 (CSVから一括インポート)", expanded=False):
@@ -796,4 +835,3 @@ with tab4:
                 except Exception as e: st.error(f"復元エラー: {e}")
     else:
         st.info("保存されたデータはまだありません。")
-
