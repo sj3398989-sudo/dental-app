@@ -1,3 +1,14 @@
+ご要望いただいた4つの機能（分析の連動絞り込み、操作説明、管理タブの検索ボタンのズレ修正、一括削除ボタン＋ポップアップ確認）をすべて実装した最新の完全版コードを作成しました！
+💡 追加・修正したポイント
+ * 分析タブの連動絞り込み:
+   材料などを選ぶと、内部で「その材料が使われているデータ」だけを計算し、存在しない医院名やシート種別がリアルタイムでドロップダウンの選択肢から消えるようにしました。
+ * 分析タブの操作説明:
+   上部にわかりやすいブルーのガイド文を追加しました。
+ * 管理タブの検索レイアウト（PCズレ修正）:
+   検索窓上の文字（ラベル）を内部的に隠し（placeholderに移動）、PCでもスマホでも検索ボタンと高さがピシッと水平に揃うように修正しました。
+ * 一括編集エリアの削除機能:
+   保存ボタンの横に「🗑️ 選択したデータを一括削除」ボタンを並べました。押すと下部に警告（ポップアップ風の確認UI）が開き、「はい／キャンセル」を選べる安全設計にしています。
+以下のコードをコピーして、app.py に丸ごと上書き保存してください！
 import os
 
 # ==========================================
@@ -108,7 +119,7 @@ def safe_int(val, default=3):
 def call_gemini_with_fallback(contents, prm=None, ai_config=None):
     if not KEY: raise ValueError("GEMINI_API_KEY が設定されていません。")
     client = genai.Client(api_key=KEY)
-    # ★ ここに gemini-3.7-flash を最優先として追加しました
+    # 最優先を gemini-3.7-flash に設定
     models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash']
     payload = [contents, prm] if prm else contents
     last_exception = None
@@ -400,23 +411,59 @@ with tab3:
     if not global_df.empty:
         df = global_df.copy()
         
+        # セッションステート初期化（連動絞り込み用）
+        for k in ['s_c', 's_st', 's_p', 's_m', 's_r']:
+            if k not in st.session_state: st.session_state[k] = "すべて"
+
+        # 連動する選択肢を動的に計算する関数
+        def get_dynamic_options(col_name):
+            temp = df.copy()
+            if st.session_state.s_p != "すべて":
+                p_map = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
+                cutoff = pd.Timestamp.today().date() - pd.DateOffset(months=p_map[st.session_state.s_p])
+                temp = temp[temp['completion_date'] >= cutoff.date()]
+            if st.session_state.s_c != "すべて" and col_name != "clinic_name": temp = temp[temp["clinic_name"] == st.session_state.s_c]
+            if st.session_state.s_st != "すべて" and col_name != "sheet_type": temp = temp[temp["sheet_type"] == st.session_state.s_st]
+            if st.session_state.s_m != "すべて" and col_name != "material": temp = temp[temp["material"] == st.session_state.s_m]
+            if st.session_state.s_r != "すべて" and col_name != "restoration_type": temp = temp[temp["restoration_type"] == st.session_state.s_r]
+            
+            if col_name in temp.columns:
+                opts = ["すべて"] + sorted(list(temp[col_name].dropna().unique()))
+            else:
+                opts = ["すべて"]
+            return opts
+
+        st.info("💡 **操作ガイド**: いずれかの条件を選ぶと、該当しない医院や材料の選択肢が自動で消えます（連動絞り込み）。医院へのフィードバック資料作成時は最下部のレポート出力機能をご活用ください。")
+        
         with st.container(border=True):
             cf1, cf2, cf3, cf4, cf5 = st.columns(5)
-            s_c = cf1.selectbox("🏥 医院", ["すべて"] + sorted(list(df["clinic_name"].dropna().unique())))
-            s_st = cf2.selectbox("📄 シート", ["すべて"] + list(df.get("sheet_type", pd.Series([""])).dropna().unique()))
-            s_p = cf3.selectbox("📅 期間", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"])
-            s_m = cf4.selectbox("💎 材料", ["すべて"] + list(df.get("material", pd.Series([""])).dropna().unique()))
-            s_r = cf5.selectbox("🦷 種別", ["すべて"] + list(df.get("restoration_type", pd.Series([""])).dropna().unique()))
+            # 現在のステートが新しい選択肢リストに含まれない場合は "すべて" にフォールバック
+            opt_c = get_dynamic_options("clinic_name")
+            opt_st = get_dynamic_options("sheet_type")
+            opt_m = get_dynamic_options("material")
+            opt_r = get_dynamic_options("restoration_type")
+            
+            idx_p = ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"].index(st.session_state.s_p) if st.session_state.s_p in ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"] else 0
+            idx_c = opt_c.index(st.session_state.s_c) if st.session_state.s_c in opt_c else 0
+            idx_st = opt_st.index(st.session_state.s_st) if st.session_state.s_st in opt_st else 0
+            idx_m = opt_m.index(st.session_state.s_m) if st.session_state.s_m in opt_m else 0
+            idx_r = opt_r.index(st.session_state.s_r) if st.session_state.s_r in opt_r else 0
+
+            cf3.selectbox("📅 期間", ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"], index=idx_p, key="s_p")
+            cf1.selectbox("🏥 医院", opt_c, index=idx_c, key="s_c")
+            cf2.selectbox("📄 シート", opt_st, index=idx_st, key="s_st")
+            cf4.selectbox("💎 材料", opt_m, index=idx_m, key="s_m")
+            cf5.selectbox("🦷 種別", opt_r, index=idx_r, key="s_r")
         
+        # 実際にデータを絞り込む
         f_df = df.copy()
-        if s_c != "すべて": f_df = f_df[f_df["clinic_name"] == s_c]
-        if s_st != "すべて" and "sheet_type" in f_df.columns: f_df = f_df[f_df["sheet_type"] == s_st]
-        if s_m != "すべて" and "material" in f_df.columns: f_df = f_df[f_df["material"] == s_m]
-        if s_r != "すべて" and "restoration_type" in f_df.columns: f_df = f_df[f_df["restoration_type"] == s_r]
-        
-        p_map = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
-        if s_p in p_map: 
-            cutoff = pd.Timestamp.today().date() - pd.DateOffset(months=p_map[s_p])
+        if st.session_state.s_c != "すべて": f_df = f_df[f_df["clinic_name"] == st.session_state.s_c]
+        if st.session_state.s_st != "すべて" and "sheet_type" in f_df.columns: f_df = f_df[f_df["sheet_type"] == st.session_state.s_st]
+        if st.session_state.s_m != "すべて" and "material" in f_df.columns: f_df = f_df[f_df["material"] == st.session_state.s_m]
+        if st.session_state.s_r != "すべて" and "restoration_type" in f_df.columns: f_df = f_df[f_df["restoration_type"] == st.session_state.s_r]
+        if st.session_state.s_p != "すべて": 
+            p_map = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
+            cutoff = pd.Timestamp.today().date() - pd.DateOffset(months=p_map[st.session_state.s_p])
             f_df = f_df[f_df['completion_date'] >= cutoff.date()]
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -474,7 +521,7 @@ with tab3:
                 
                 prm = (
                     f"【重要：必ず日本語で回答してください】\n"
-                    f"対象データは全{len(f_df)}件です。条件（医院:{s_c}, シート種別:{s_st}, 材料:{s_m}, 種別:{s_r}）の傾向分析をお願いします。\n"
+                    f"対象データは全{len(f_df)}件です。条件（医院:{st.session_state.s_c}, シート種別:{st.session_state.s_st}, 材料:{st.session_state.s_m}, 種別:{st.session_state.s_r}）の傾向分析をお願いします。\n"
                     "評価スコアは「3が適正」「1が弱い（緩い・低い）」「5がきついの前提で、プロの歯科技工士の視点から考察・分析を行ってください。\n"
                     f"データ:\n{dic}"
                 )
@@ -521,7 +568,7 @@ with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
         if len(f_df) > 0:
             html = f"""
-            <html><head><meta charset="utf-8"><title>品質分析レポート - {s_c}</title>
+            <html><head><meta charset="utf-8"><title>品質分析レポート - {st.session_state.s_c}</title>
             <style>
                 @media print {{
                     body {{ background-color: #FFFFFF !important; padding: 0 !important; font-size: 12pt !important; }}
@@ -532,7 +579,7 @@ with tab3:
             </head>
             <body style="font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; padding: 30px; color: #1D1D1F; background-color: #F5F5F7;">
                 <h2 style="color: #1D1D1F; border-bottom: 2px solid #E5E5EA; padding-bottom: 10px;">AI品質管理カルテ (大阪センター) - 品質分析レポート</h2>
-                <p style="color: #8E8E93; font-weight: 500;">医院: {s_c} | 種別: {s_st} | 材料: {s_m} | 出力日: {date.today().isoformat()}</p>
+                <p style="color: #8E8E93; font-weight: 500;">医院: {st.session_state.s_c} | 種別: {st.session_state.s_st} | 材料: {st.session_state.s_m} | 出力日: {date.today().isoformat()}</p>
                 
                 <div style="background-color: #FFFFFF; padding: 25px; border-radius: 16px; border: 1px solid #E5E5EA; margin-bottom: 20px;">
                     <p style="margin: 0; font-size: 15px; line-height: 1.6;">
@@ -609,21 +656,20 @@ with tab4:
     if not global_df.empty:
         df = global_df.copy()
         
-        # 検索ボックスと検索ボタン・CSVダウンロードの配置
+        # ★ 検索ボックス（ラベルを隠してボタンとの高さを完璧に合わせる）
         with st.container(border=True):
             col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
-            search_query = col_s1.text_input("🔍 患者名・医院名で検索", placeholder="キーワードを入力...")
+            search_query = col_s1.text_input("検索", placeholder="🔍 患者名・医院名で検索...", label_visibility="collapsed")
             search_btn = col_s2.button("🔍 検索", type="primary", use_container_width=True)
-            col_s3.markdown("<br>", unsafe_allow_html=True)
             col_s3.download_button("📥 CSVダウンロード", df.to_csv(index=False).encode('utf-8-sig'), "evaluations.csv", "text/csv", use_container_width=True)
                 
-        # 検索ボタンが押された、または文字が入力されている場合にフィルタリング
+        # 検索フィルタリング
         if search_query:
             df = df[df['patient_name'].astype(str).str.contains(search_query, na=False) | df['clinic_name'].astype(str).str.contains(search_query, na=False)]
 
         st.markdown("---")
-        st.markdown("#### 📝 データの一括編集（☑️ チェックボックスで選択）")
-        st.info("💡 操作方法：左端のチェックボックスにチェックを入れると、下部の専用パネルから複数データを一気に変更できます。直接セルを書き換えての保存も可能です。")
+        st.markdown("#### 📝 データの一括編集・削除")
+        st.info("💡 操作方法：左端のチェックボックスにチェックを入れると、下部の専用パネルから複数データを一気に変更・削除できます。")
         
         edit_cols = ['id', 'completion_date', 'clinic_name', 'patient_name', 'slip_number', 'sheet_type', 'restoration_type', 'material', 'tooth_position', 'contact', 'bite', 'fit', 'comments', 'image_url']
         df_for_edit = df[[c for c in edit_cols if c in df.columns]].copy()
@@ -654,14 +700,17 @@ with tab4:
 
         selected_rows = edited_df[edited_df["✅ 選択"] == True]
         if len(selected_rows) > 0:
-            st.markdown(f"**☑️ 選択した {len(selected_rows)} 件のデータを一括変更**")
+            st.markdown(f"**☑️ 選択した {len(selected_rows)} 件のデータに対する操作**")
             with st.container(border=True):
                 bc1, bc2, bc3 = st.columns(3)
                 b_sheet = bc1.selectbox("📄 シート種別を一括変更", ["変更しない"] + SHEET_TYPE_LIST, key="b4_sh")
                 b_type = bc2.selectbox("🦷 種別を一括変更", ["変更しない"] + TYPE_LIST, key="b4_ty")
                 b_mat = bc3.selectbox("💎 材料を一括変更", ["変更しない"] + MATERIAL_LIST, key="b4_ma")
                 
-                if st.button("🚀 チェックした項目を一括更新（DB保存）", type="primary"):
+                # ★ 更新ボタンと削除ボタンを横並びに配置
+                btn_c1, btn_c2 = st.columns(2)
+                
+                if btn_c1.button("🚀 チェックした項目を一括更新（DB保存）", type="primary", use_container_width=True):
                     update_data = {}
                     if b_sheet != "変更しない": update_data["sheet_type"] = b_sheet
                     if b_type != "変更しない": update_data["restoration_type"] = b_type
@@ -677,6 +726,26 @@ with tab4:
                         st.rerun()
                     else:
                         st.warning("変更する項目を選んでください。")
+                
+                if btn_c2.button("🗑️ 選択したデータを一括削除", use_container_width=True):
+                    st.session_state.confirm_bulk_del = True
+                    
+            # ★ 削除前の確認ポップアップ表示
+            if st.session_state.get("confirm_bulk_del", False):
+                st.error(f"⚠️ 本当に選択した {len(selected_rows)} 件のデータを完全に削除しますか？ この操作は元に戻せません。")
+                del_c1, del_c2 = st.columns(2)
+                if del_c1.button("✅ はい、完全に削除します", type="primary", use_container_width=True):
+                    with st.spinner("データベースから削除中..."):
+                        target_ids = selected_rows["id"].tolist()
+                        for tid in target_ids:
+                            db.table("evaluations").delete().eq("id", int(tid)).execute()
+                    st.session_state.confirm_bulk_del = False
+                    st.success("一括削除が完了しました！画面を再読み込みします。")
+                    time.sleep(1.5)
+                    st.rerun()
+                if del_c2.button("❌ キャンセル", use_container_width=True):
+                    st.session_state.confirm_bulk_del = False
+                    st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -719,16 +788,6 @@ with tab4:
                         st.rerun()
 
         st.markdown("---")
-        with st.expander("🗑️ データの一括削除（取り扱い注意）", expanded=False):
-            st.warning("選択したデータをDBから完全に消去します。")
-            selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
-            if selected_ids and st.button(f"⚠️ 選択した {len(selected_ids)} 件のデータを完全に削除する"):
-                for tid in selected_ids: db.table("evaluations").delete().eq("id", tid).execute()
-                st.success("削除完了しました！")
-                time.sleep(1)
-                st.rerun()
-
-        st.markdown("---")
         with st.expander("🚑 万が一のデータ復旧 (CSVから一括インポート)", expanded=False):
             st.info("過去にダウンロードしたバックアップ用のCSVファイルをアップロードして、データを一括復元します。")
             restore_file = st.file_uploader("復旧用CSVファイルを選択", type=["csv"], key="restore_csv")
@@ -748,3 +807,4 @@ with tab4:
                 except Exception as e: st.error(f"復元エラー: {e}")
     else:
         st.info("保存されたデータはまだありません。")
+
