@@ -55,15 +55,64 @@ st.markdown("""
     input, select, textarea { border-radius: 10px !important; transition: all 0.2s ease !important; }
     .metric-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); padding: 24px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.6); text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.04); }
     .metric-card h2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif; letter-spacing: -0.04em; }
-    .shortcut-guide { font-size: 0.85rem; color: #1D1D1F; background: rgba(0, 122, 255, 0.08); padding: 8px 14px; border-radius: 10px; margin-bottom: 14px; display: inline-block; font-weight: 500; }
     .alert-card { padding: 14px 18px; border-left: 4px solid #FF3B30; background-color: rgba(255, 59, 48, 0.05); border-radius: 12px; margin-bottom: 10px; color: #1D1D1F; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="custom-title">🦷 AI品質管理カルテ <span style="font-size: 0.5em; font-weight: 500; color: #8E8E93;">(大阪センター)</span></div>', unsafe_allow_html=True)
+# ==========================================
+# 2. 🔐 ログイン認証処理（セキュリティガード）
+# ==========================================
+def check_password():
+    """未認証の場合はログインフォームを表示し、認証が通るまでTrueを返さない"""
+    def password_entered():
+        users = st.secrets.get("passwords", {})
+        input_user = st.session_state.get("login_username", "")
+        input_pass = st.session_state.get("login_password", "")
+        
+        if input_user in users and input_pass == users[input_user]:
+            st.session_state["password_correct"] = True
+            st.session_state["current_user"] = input_user
+            del st.session_state["login_password"]
+        else:
+            st.session_state["password_correct"] = False
+
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # ログイン画面
+    st.markdown('<div class="custom-title">🦷 AI品質管理カルテ <span style="font-size: 0.5em; font-weight: 500; color: #8E8E93;">(大阪センター)</span></div>', unsafe_allow_html=True)
+    st.markdown("### 🔐 関係者ログイン")
+    st.info("このシステムは関係者専用です。ログインIDとパスワードを入力してください。")
+    
+    with st.container(border=True):
+        with st.form("login_form"):
+            st.text_input("👤 ユーザー名（ID）", key="login_username")
+            st.text_input("🔑 パスワード", type="password", key="login_password")
+            st.form_submit_button("ログインする", on_click=password_entered, type="primary", use_container_width=True)
+
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("⚠️ ユーザー名またはパスワードが正しくありません。")
+    
+    return False
+
+# ログインしていなければここで処理を完全停止（以降のDB取得や画面描画は一切行われない）
+if not check_password():
+    st.stop()
 
 # ==========================================
-# 2. 定数 & データベース設定
+# 3. 画面ヘッダー ＆ ログアウトボタン
+# ==========================================
+head_col1, head_col2 = st.columns([4, 1])
+with head_col1:
+    st.markdown(f'<div class="custom-title">🦷 AI品質管理カルテ <span style="font-size: 0.5em; font-weight: 500; color: #8E8E93;">(大阪センター) | 👤 {st.session_state.get("current_user", "")}</span></div>', unsafe_allow_html=True)
+with head_col2:
+    st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+    if st.button("🚪 ログアウト", use_container_width=True):
+        st.session_state["password_correct"] = False
+        st.rerun()
+
+# ==========================================
+# 4. 定数 & データベース設定
 # ==========================================
 SHEET_TYPE_LIST = ["セパレートレス模型", "IOS"]
 MATERIAL_LIST = ["ジルコニア", "CAD/CAM冠", "e.max", "チタン", "3Dプリント", "PEEK", "その他"]
@@ -82,7 +131,7 @@ def get_db():
 db = get_db()
 
 # ==========================================
-# 3. 全体データの1回のみ一括取得 (無駄を排除)
+# 5. 全体データの一括取得
 # ==========================================
 global_df = pd.DataFrame()
 if db:
@@ -99,7 +148,7 @@ if db:
         st.error(f"データ読み込みエラー: {e}")
 
 # ==========================================
-# 4. 共通・ヘルパー関数
+# 6. 共通・ヘルパー関数
 # ==========================================
 def safe_int(val, default=3):
     try: return max(1, min(5, int(float(val))))
@@ -170,7 +219,7 @@ def display_file_preview(file_obj):
 
 
 # ==========================================
-# 5. 画面描画 (Tabs)
+# 7. 画面描画 (Tabs)
 # ==========================================
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = "uploader_" + str(time.time())
@@ -187,7 +236,6 @@ with tab1:
 
     if up_files and KEY and st.button("✨ 一括AI解析をスタート", type="primary"):
         with st.spinner("AIがシートを精密解析中..."):
-            # ★ 既存の医院リストをデータベースから取得してプロンプトに組み込む
             clinic_list_str = ", ".join(sorted(list(global_df["clinic_name"].dropna().unique()))) if not global_df.empty else "登録なし"
             
             prm = (
@@ -280,7 +328,7 @@ with tab1:
                 "シート種別": item.get("sheet_type", "セパレートレス模型"),
                 "種別": item.get("restoration_type", ""), "材料": item.get("material", ""),
                 "部位": item.get("tooth_position", ""),
-                "コンタクト": safe_int(item.get("contact")), "バイト": safe_int(item.get("bite")), "適合": safe_int(item.get("fit")),
+                "コンタクト": safe_int(item.get("contact")), "バイト": safe_int(item.get("bite")), "fit": safe_int(item.get("fit")),
                 "コメント": item.get("comments", ""), "_f_idx": item.get("_f_idx")
             })
         
@@ -301,7 +349,7 @@ with tab1:
                 "部位": st.column_config.TextColumn("📍 部位"),
                 "コンタクト": st.column_config.NumberColumn("コンタクト", min_value=1, max_value=5, step=1, width="small"),
                 "バイト": st.column_config.NumberColumn("バイト", min_value=1, max_value=5, step=1, width="small"),
-                "適合": st.column_config.NumberColumn("適合", min_value=1, max_value=5, step=1, width="small"),
+                "fit": st.column_config.NumberColumn("適合", min_value=1, max_value=5, step=1, width="small"),
                 "コメント": st.column_config.TextColumn("💬 コメント"),
                 "_f_idx": None,
             },
@@ -333,7 +381,7 @@ with tab1:
                edited_df["患者名"].isnull().any() or (edited_df["患者名"].astype(str).str.strip() == "").any():
                 st.error("⚠️ 未入力の「医院名」または「患者名」があります。表を確認してください。")
             elif db:
-                with st.spinner("データベースへ一括保存中... (超高速化)"):
+                with st.spinner("データベースへ一括保存中..."):
                     insert_data = []
                     for idx, row in edited_df.iterrows():
                         f_idx = row.get("_f_idx")
@@ -346,7 +394,7 @@ with tab1:
                             "sheet_type": str(row.get("シート種別", "セパレートレス模型")),
                             "restoration_type": str(row.get("種別", "")), "material": str(row.get("材料", "")),
                             "tooth_position": str(row.get("部位", "")),
-                            "contact": safe_int(row.get("コンタクト")), "bite": safe_int(row.get("バイト")), "fit": safe_int(row.get("適合")),
+                            "contact": safe_int(row.get("コンタクト")), "bite": safe_int(row.get("バイト")), "fit": safe_int(row.get("fit")),
                             "comments": str(row.get("コメント", "")),
                             "image_url": upload_file_to_storage(file_obj, idx)
                         })
@@ -405,11 +453,9 @@ with tab3:
     if not global_df.empty:
         df = global_df.copy()
         
-        # セッションステート初期化（連動絞り込み用）
         for k in ['s_c', 's_st', 's_p', 's_m', 's_r']:
             if k not in st.session_state: st.session_state[k] = "すべて"
 
-        # 連動する選択肢を動的に計算する関数
         def get_dynamic_options(col_name):
             temp = df.copy()
             if st.session_state.s_p != "すべて":
@@ -422,16 +468,13 @@ with tab3:
             if st.session_state.s_r != "すべて" and col_name != "restoration_type": temp = temp[temp["restoration_type"] == st.session_state.s_r]
             
             if col_name in temp.columns:
-                opts = ["すべて"] + sorted(list(temp[col_name].dropna().unique()))
-            else:
-                opts = ["すべて"]
-            return opts
+                return ["すべて"] + sorted(list(temp[col_name].dropna().unique()))
+            return ["すべて"]
 
         st.info("💡 **操作ガイド**: いずれかの条件を選ぶと、該当しない医院や材料の選択肢が自動で消えます（連動絞り込み）。医院へのフィードバック資料作成時は最下部のレポート出力機能をご活用ください。")
         
         with st.container(border=True):
             cf1, cf2, cf3, cf4, cf5 = st.columns(5)
-            # 現在のステートが新しい選択肢リストに含まれない場合は "すべて" にフォールバック
             opt_c = get_dynamic_options("clinic_name")
             opt_st = get_dynamic_options("sheet_type")
             opt_m = get_dynamic_options("material")
@@ -449,7 +492,6 @@ with tab3:
             cf4.selectbox("💎 材料", opt_m, index=idx_m, key="s_m")
             cf5.selectbox("🦷 種別", opt_r, index=idx_r, key="s_r")
         
-        # 実際にデータを絞り込む
         f_df = df.copy()
         if st.session_state.s_c != "すべて": f_df = f_df[f_df["clinic_name"] == st.session_state.s_c]
         if st.session_state.s_st != "すべて" and "sheet_type" in f_df.columns: f_df = f_df[f_df["sheet_type"] == st.session_state.s_st]
@@ -650,14 +692,12 @@ with tab4:
     if not global_df.empty:
         df = global_df.copy()
         
-        # 検索ボックス（ラベルを隠してボタンとの高さを完璧に合わせる）
         with st.container(border=True):
             col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
             search_query = col_s1.text_input("検索", placeholder="🔍 患者名・医院名で検索...", label_visibility="collapsed")
             search_btn = col_s2.button("🔍 検索", type="primary", use_container_width=True)
             col_s3.download_button("📥 CSVダウンロード", df.to_csv(index=False).encode('utf-8-sig'), "evaluations.csv", "text/csv", use_container_width=True)
                 
-        # 検索フィルタリング
         if search_query:
             df = df[df['patient_name'].astype(str).str.contains(search_query, na=False) | df['clinic_name'].astype(str).str.contains(search_query, na=False)]
 
@@ -701,7 +741,6 @@ with tab4:
                 b_type = bc2.selectbox("🦷 種別を一括変更", ["変更しない"] + TYPE_LIST, key="b4_ty")
                 b_mat = bc3.selectbox("💎 材料を一括変更", ["変更しない"] + MATERIAL_LIST, key="b4_ma")
                 
-                # 更新ボタンと削除ボタンを横並びに配置
                 btn_c1, btn_c2 = st.columns(2)
                 
                 if btn_c1.button("🚀 チェックした項目を一括更新（DB保存）", type="primary", use_container_width=True):
@@ -724,7 +763,6 @@ with tab4:
                 if btn_c2.button("🗑️ 選択したデータを一括削除", use_container_width=True):
                     st.session_state.confirm_bulk_del = True
                     
-            # 削除前の確認ポップアップ表示
             if st.session_state.get("confirm_bulk_del", False):
                 st.error(f"⚠️ 本当に選択した {len(selected_rows)} 件のデータを完全に削除しますか？ この操作は元に戻せません。")
                 del_c1, del_c2 = st.columns(2)
@@ -767,7 +805,6 @@ with tab4:
 
         st.markdown("---")
         
-        # ★ 新機能：医院名の名寄せ・一括置換ツール
         with st.expander("🏥 医院名の名寄せ・統合（一括置換）", expanded=False):
             st.info("表記揺れ（例：「田中」「田中歯科」）を正しい医院名（例：「田中歯科医院」）に一括で統合します。")
             all_clinics = sorted(list(df["clinic_name"].dropna().unique()))
