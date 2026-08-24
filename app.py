@@ -827,22 +827,6 @@ with tab4:
 
         st.markdown("---")
         
-        with st.expander("🧹 1年経過した古い画像を削除（文字データは残す・容量節約）", expanded=False):
-            st.info("完成日から1年以上経過した「画像ファイルのみ」をストレージから削除します。データ分析用のテキストは残ります。")
-            if 'completion_date' in df.columns:
-                old_df = df[(pd.to_datetime(df['completion_date'], errors='coerce') < (pd.Timestamp.today() - pd.DateOffset(years=1))) & (df['image_url'].notna())]
-                st.write(f"削除対象画像: **{len(old_df)} 件**")
-                if len(old_df) > 0 and st.button("⚠️ 対象の画像を削除する"):
-                    with st.spinner("画像データをクリーンアップ中..."):
-                        for _, row in old_df.iterrows():
-                            file_name = row['image_url'].split('/')[-1]
-                            db.storage.from_("sheet_images").remove([file_name])
-                            db.table("evaluations").update({"image_url": None}).eq("id", row['id']).execute()
-                        st.success("🎉 古い画像の削除が完了しました！")
-                        time.sleep(1.5)
-                        st.rerun()
-
-        st.markdown("---")
         with st.expander("🗑️ データの一括削除（取り扱い注意）", expanded=False):
             st.warning("選択したデータをDBから完全に消去します。")
             selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
