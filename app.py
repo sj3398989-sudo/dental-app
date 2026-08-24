@@ -829,7 +829,11 @@ with tab4:
         
         with st.expander("🗑️ データの一括削除（取り扱い注意）", expanded=False):
             st.warning("選択したデータをDBから完全に消去します。")
-            selected_ids = [row['id'] for _, row in df.iterrows() if st.checkbox(f"ID:{row['id']} | {row['clinic_name']} - {row['patient_name']} 様", key=f"del_{row['id']}")]
+            selected_ids = [
+    row['id'] for _, row in df.iterrows() 
+    if st.checkbox(f"ID:{row['id']} | {row.get('clinic_name', '')} - 伝票:{row.get('slip_number', '-')}", key=f"del_{row['id']}")
+]
+
             if selected_ids and st.button(f"⚠️ 選択した {len(selected_ids)} 件のデータを完全に削除する"):
                 for tid in selected_ids: db.table("evaluations").delete().eq("id", tid).execute()
                 st.success("削除完了しました！")
