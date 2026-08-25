@@ -1,0 +1,13 @@
+# Streamlit secrets（APIキー・パスワードを含むため絶対にコミットしない）
+.streamlit/secrets.toml
+.streamlit/secret.toml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store

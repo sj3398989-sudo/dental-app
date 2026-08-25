@@ -1,0 +1,8 @@
+streamlit
+streamlit-shadcn-ui
+pandas
+plotly
+google-genai
+supabase
+Pillow
+watchdog
