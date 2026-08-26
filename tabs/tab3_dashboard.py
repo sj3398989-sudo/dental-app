@@ -8,7 +8,7 @@ import plotly.express as px
 import streamlit as st
 
 from config import (
-    GENERIC_ERROR_MESSAGE, PERIOD_LIST, PERIOD_MAP, SCORE_OPTIMAL, esc, log_error,
+    GENERIC_ERROR_MESSAGE, PERIOD_LIST, PERIOD_MAP, SCORE_OPTIMAL, SCORE_STATE_NAMES, esc, log_error,
 )
 import ai_service
 
@@ -33,14 +33,16 @@ FILTER_KEYS = {
 ALERT_HIGH = 3.4
 ALERT_LOW = 2.6
 
-# スコア別の配色（高級感ある5色パレット）
+# スコア別の配色（ソフト＆スモーキートーン）
 SCORE_COLORS = {
-    "1": "#334155",  # ダークスレート（極端にゆるい・低い）
-    "2": "#6366F1",  # スレートインディゴ（ややゆるい・低い）
-    "3": "#059669",  # ディープエメラルド（適正基準・良好）
-    "4": "#E11D48",  # ローズコーラル（ややきつい・高い）
-    "5": "#9F1239"   # クリムゾンワイン（極端にきつい・高い）
+    "1": "#64748b",  # 極端にゆるい・低い
+    "2": "#818cf8",  # ややゆるい・低い
+    "3": "#34d399",  # 適正
+    "4": "#fb7185",  # ややきつい・高い
+    "5": "#f43f5e"   # 極端にきつい・高い
 }
+# 「要調整」カラー（未使用、将来の拡張用）
+# ADJUST_COLOR = "#fbbf24"
 SCORE_NAME_MAP = {"contact": "コンタクト", "bite": "バイト", "fit": "適合"}
 
 
@@ -80,7 +82,7 @@ def _render_filters(df):
     st.caption("💡 いずれかの条件を選ぶと、該当しない選択肢が自動で消えます（連動絞り込み）")
 
     with st.container(border=True):
-        cf1, cf2, cf3, cf4, cf5 = st.columns(5)
+        cf1, cf2, cf3, cf4, cf5, cf6 = st.columns([1, 1, 1, 1, 1, 0.6])
         opt_c = get_dynamic_options(df, "clinic_name")
         opt_st = get_dynamic_options(df, "sheet_type")
         opt_m = get_dynamic_options(df, "material")
@@ -102,6 +104,12 @@ def _render_filters(df):
             st.selectbox("材料", opt_m, index=idx_m, key="s_m", label_visibility="collapsed")
         with cf5:
             st.selectbox("種別", opt_r, index=idx_r, key="s_r", label_visibility="collapsed")
+        with cf6:
+            if st.button("🔄 リセット", use_container_width=True, key="filter_reset_btn"):
+                for k in FILTER_KEYS:
+                    st.session_state[k] = "すべて"
+                st.session_state["s_p"] = "すべて"
+                st.rerun()
 
 
 # ==========================================
@@ -129,7 +137,8 @@ def _render_donut_charts(f_df):
         optimal_count = dist.get(SCORE_OPTIMAL, 0)
         optimal_pct = (optimal_count / len(f_df) * 100) if len(f_df) > 0 else 0
 
-        labels = [f"{i}" for i in [1, 2, 3, 4, 5]]
+        state_map = SCORE_STATE_NAMES[score_col]
+        labels = [state_map[i] for i in [1, 2, 3, 4, 5]]
         values = [dist.get(i, 0) for i in [1, 2, 3, 4, 5]]
         colors = [SCORE_COLORS.get(str(i), "#999") for i in [1, 2, 3, 4, 5]]
 
@@ -141,8 +150,8 @@ def _render_donut_charts(f_df):
         fig.update_traces(
             marker=dict(line=dict(color="#FFFFFF", width=2)),
             textposition="inside",
-            textinfo="label+value",
-            hovertemplate="<b>スコア %{label}</b><br>件数: %{value}<extra></extra>"
+            textinfo="label+percent",
+            hovertemplate="<b>%{label}</b><br>割合: %{percent}<extra></extra>"
         )
         fig.update_layout(
             showlegend=False,
@@ -281,6 +290,34 @@ def _render_monthly_trend(f_df):
 
 
 # ==========================================
+# レポート埋め込み用ドーナツ図生成
+# ==========================================
+def _build_donut_figs_for_report(f_df):
+    """レポート埋め込み用に、ダッシュボードと同じ配色・ラベル規則でドーナツ図を生成する（印刷向けに小さめサイズ）。"""
+    figs = []
+    for score_col, label in [("contact", "コンタクト"), ("bite", "バイト"), ("fit", "適合")]:
+        dist = get_score_distribution(f_df, score_col)
+        state_map = SCORE_STATE_NAMES[score_col]
+        labels = [state_map[i] for i in [1, 2, 3, 4, 5]]
+        values = [dist.get(i, 0) for i in [1, 2, 3, 4, 5]]
+        colors = [SCORE_COLORS.get(str(i), "#999") for i in [1, 2, 3, 4, 5]]
+        fig = px.pie(names=labels, values=values, hole=0.6, color_discrete_sequence=colors, title=label)
+        fig.update_traces(textposition="inside", textinfo="label+percent",
+                           marker=dict(line=dict(color="#FFFFFF", width=1)))
+        fig.update_layout(showlegend=False, margin=dict(t=30, b=0, l=0, r=0),
+                           paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                           font=dict(size=10, color="#1D1D1F"), width=220, height=220)
+        figs.append(fig)
+    return figs
+
+
+def _fig_to_data_uri(fig):
+    """Plotly図をPNG base64 data URI に変換する。"""
+    png_bytes = fig.to_image(format="png", width=220, height=220, scale=2)
+    return "data:image/png;base64," + base64.b64encode(png_bytes).decode()
+
+
+# ==========================================
 # 医院向けHTMLレポート
 # ==========================================
 def build_html_report(f_df, stats):
@@ -296,16 +333,16 @@ def build_html_report(f_df, stats):
                 body {{ font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; color: #1D1D1F; background-color: #F5F5F7; padding: 30px; }}
                 .no-print {{ display: block; }}
                 @media print {{
-                    body {{ background-color: #FFFFFF !important; padding: 20px !important; font-size: 11pt !important; margin: 0; }}
+                    body {{ background-color: #FFFFFF !important; padding: 10px !important; font-size: 10pt !important; margin: 0; }}
                     .no-print {{ display: none !important; }}
-                    .report-section {{ page-break-inside: avoid; background-color: #FFFFFF !important; border: 1px solid #DDD !important; margin-bottom: 12px !important; padding: 20px !important; }}
-                    .metric-card {{ page-break-inside: avoid; background-color: #FAFAFA !important; border: 1px solid #DDD !important; padding: 12px !important; margin: 8px 0 !important; }}
-                    h2 {{ page-break-after: avoid; margin-bottom: 12px !important; font-size: 16pt !important; }}
-                    h3 {{ page-break-after: avoid; margin-bottom: 10px !important; font-size: 13pt !important; }}
-                    table {{ page-break-inside: avoid; width: 100%; border-collapse: collapse; font-size: 10pt !important; }}
-                    th, td {{ border: 1px solid #999 !important; padding: 8px !important; }}
+                    .report-section {{ page-break-inside: avoid; background-color: #FFFFFF !important; border: 1px solid #DDD !important; margin-bottom: 8px !important; padding: 14px !important; }}
+                    .metric-card {{ page-break-inside: avoid; background-color: #FAFAFA !important; border: 1px solid #DDD !important; padding: 8px !important; margin: 4px 0 !important; }}
+                    h2 {{ page-break-after: avoid; margin-bottom: 8px !important; font-size: 14pt !important; }}
+                    h3 {{ page-break-after: avoid; margin-bottom: 6px !important; font-size: 11pt !important; }}
+                    table {{ page-break-inside: avoid; width: 100%; border-collapse: collapse; font-size: 9pt !important; }}
+                    th, td {{ border: 1px solid #999 !important; padding: 5px !important; }}
                     a.print-btn {{ display: none !important; }}
-                    @page {{ size: A4 portrait; margin: 15mm; }}
+                    @page {{ size: A4 portrait; margin: 10mm; }}
                 }}
             </style>
             </head>
@@ -391,7 +428,7 @@ def build_html_report(f_df, stats):
 
                 <div class="no-print" style="margin-top: 30px; padding: 20px; background-color: #FFFFFF; border-radius: 12px; border: 1px solid #E5E5EA; text-align: center;">
                     <button onclick="window.print()" style="padding: 12px 28px; background-color: #34C759; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; margin-right: 12px; transition: background-color 0.2s;">🖨️ 印刷 / PDF保存</button>
-                    <a href="javascript:void(0)" onclick="document.body.style.opacity='0.5'; setTimeout(() => document.body.style.opacity='1'; window.print(), 100);" style="display: inline-block; padding: 12px 28px; background-color: #007AFF; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer;">💾 HTMLダウンロード</a>
+                    <a href="javascript:void(0)" style="display: inline-block; padding: 12px 28px; background-color: #007AFF; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer;">💾 HTMLダウンロード</a>
                 </div>
             </body>
             <script>
@@ -418,13 +455,15 @@ def _render_report_link(f_df, stats):
     with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
+            # レポートを新しいタブで開く（レポート内の window.print() ボタンで確実に動作）
             st.markdown(
-                f'<a href="data:text/html;base64,{b64}" download="quality_report.html" target="_blank" style="display: inline-block; width: 100%; padding: 14px 24px; background-color: #007AFF; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); text-align: center;">📥 HTMLダウンロード</a>',
+                f'<a href="data:text/html;base64,{b64}" target="_blank" style="display: inline-block; width: 100%; padding: 14px 24px; background-color: #34C759; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3); text-align: center;">🖨️ レポートを開いて印刷/PDF保存</a>',
                 unsafe_allow_html=True,
             )
         with col2:
+            # HTML ファイルをダウンロード
             st.markdown(
-                f'<iframe srcdoc="{html.replace(chr(34), "&quot;").replace(chr(10), " ")}" style="display: none;" id="printFrame"></iframe><a href="javascript:void(0)" onclick="const iframe = document.getElementById(\'printFrame\'); if (iframe) {{ iframe.contentWindow.print(); }} else {{ const w = window.open(\'data:text/html;base64,{b64}\', \'_blank\'); w.onload = () => w.print(); }}" style="display: inline-block; width: 100%; padding: 14px 24px; background-color: #34C759; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3); text-align: center; cursor: pointer;">🖨️ 印刷 / PDF保存</a>',
+                f'<a href="data:text/html;base64,{b64}" download="quality_report.html" style="display: inline-block; width: 100%; padding: 14px 24px; background-color: #007AFF; color: white; text-decoration: none; border-radius: 12px; font-weight: 600; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); text-align: center;">📥 HTMLダウンロード</a>',
                 unsafe_allow_html=True,
             )
 
@@ -483,6 +522,8 @@ def render(global_df):
 
     _render_filters(df)
     f_df = _filter_dataframe(df)
+
+    st.caption(f"🔎 解析総数：**{len(f_df)} 件**")
 
     st.markdown("<br>", unsafe_allow_html=True)
 

@@ -169,13 +169,6 @@ def render(global_df):
     st.caption("評価シートの写真や PDF をドラッグ＆ドロップまたは選択してください")
 
     with st.container(border=True):
-        st.markdown("""
-        <div style='text-align: center; padding: 40px 20px; border: 2px dashed rgba(255,255,255,0.1); border-radius: 8px;'>
-            <div style='font-size: 28px; margin-bottom: 12px;'>📁</div>
-            <div style='color: #9CA3AF; margin-bottom: 4px;'>ファイルをドラッグ＆ドロップ</div>
-        </div>
-        """, unsafe_allow_html=True)
-
         up_files = st.file_uploader(
             "画像/PDF", type=["jpg", "png", "pdf"], accept_multiple_files=True,
             label_visibility="collapsed", key=st.session_state["uploader_key"],

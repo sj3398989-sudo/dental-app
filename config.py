@@ -22,6 +22,13 @@ SCORE_MIN = 1
 SCORE_MAX = 5
 SCORE_OPTIMAL = 3
 
+# スコア(1-5) → 状態名（評価項目ごとに意味が異なる）
+SCORE_STATE_NAMES = {
+    "contact": {1: "弱い（緩い）", 2: "やや弱い", 3: "適正", 4: "ややきつい", 5: "きつい"},
+    "bite":    {1: "低い", 2: "やや低い", 3: "適正", 4: "やや高い", 5: "高い"},
+    "fit":     {1: "緩い", 2: "やや緩い", 3: "適正", 4: "ややきつい", 5: "きつい"},
+}
+
 # 期間フィルタの選択肢とヶ月数の対応
 PERIOD_LIST = ["すべて", "直近1ヶ月", "直近2ヶ月", "直近3ヶ月", "直近6ヶ月"]
 PERIOD_MAP = {"直近1ヶ月": 1, "直近2ヶ月": 2, "直近3ヶ月": 3, "直近6ヶ月": 6}
@@ -330,6 +337,19 @@ CUSTOM_CSS = """
         background-color: rgba(16, 185, 129, 0.1) !important;
         border-color: rgba(16, 185, 129, 0.3) !important;
     }
+
+    /* ファイルアップローダー */
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #111827 !important;
+        border: 2px dashed rgba(255,255,255,0.15) !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: rgba(16,185,129,0.4) !important;
+        background-color: rgba(16,185,129,0.05) !important;
+    }
+    [data-testid="stFileUploaderDropzoneInstructions"] svg,
+    [data-testid="stFileUploaderDropzoneInstructions"] span { color: #9CA3AF !important; }
 </style>
 """
 

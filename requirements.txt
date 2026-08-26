@@ -1,7 +1,8 @@
-streamlit
+streamlit==1.62.0
 streamlit-shadcn-ui
 pandas
 plotly
+kaleido
 google-genai
 supabase
 Pillow
