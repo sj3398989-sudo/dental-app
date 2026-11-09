@@ -13,13 +13,12 @@ jobs:
         run: |
           RESPONSE=$(curl -s -w "\n%{http_code}" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
             "${{ secrets.SUPABASE_URL }}/rest/v1/")
 
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
           echo "HTTP Response Code: $HTTP_CODE"
 
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
             echo "✓ Keep-alive request successful"
           else
             echo "⚠ Keep-alive request returned: $HTTP_CODE"
