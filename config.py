@@ -220,6 +220,13 @@ CUSTOM_CSS = """
         font-size: 14px !important;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        white-space: nowrap !important;
+        padding: 10px 16px !important;
+    }
+
+    .stButton>button p {
+        white-space: nowrap !important;
+        margin: 0 !important;
     }
 
     .stButton>button[kind="primary"] {

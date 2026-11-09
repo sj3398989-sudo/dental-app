@@ -45,15 +45,32 @@ def get_db():
 # 全体データの一括取得
 # ==========================================
 def load_all_evaluations():
-    """evaluations テーブル全件を DataFrame で返す。失敗時は空の DataFrame。"""
+    """evaluations テーブル全件を DataFrame で返す。
+
+    Supabase の 1000 件制限を回避するため、.range() を使ってページネーション処理を実装。
+    1000件ずつ取得して、取得件数が1000件未満になるまで反復。
+    """
     db = get_db()
     if not db:
         return pd.DataFrame()
     try:
-        res = db.table(TABLE_NAME).select("*").order("completion_date", desc=True).execute()
-        if not res.data:
+        all_data = []
+        offset = 0
+        page_size = 1000
+
+        while True:
+            res = db.table(TABLE_NAME).select("*").order("completion_date", desc=True).range(offset, offset + page_size - 1).execute()
+            if not res.data:
+                break
+            all_data.extend(res.data)
+            if len(res.data) < page_size:
+                break
+            offset += page_size
+
+        if not all_data:
             return pd.DataFrame()
-        temp_df = pd.DataFrame(res.data)
+
+        temp_df = pd.DataFrame(all_data)
         # 旧データの患者名・画像URLはアプリ内へ持ち込まない
         temp_df = temp_df.drop(
             columns=[c for c in LEGACY_COLUMNS if c in temp_df.columns], errors="ignore")
