@@ -12,12 +12,16 @@ from PIL import Image, ImageEnhance, ImageOps
 
 from config import MATERIAL_LIST, TYPE_LIST, log_error
 
-# 優先順にフォールバックするモデル
+# 優先順にフォールバックするモデル（レート制限対応）
 MODEL_FALLBACK_CHAIN = [
     "gemini-4-hydrogen",
     "gemini-4-carbon",
+    "gemini-4-argon",
     "gemini-3.8-flash",
     "gemini-3.6-flash",
+    "gemini-3.1-pro",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
 ]
 
 # 1回のバッチで処理するファイル数
