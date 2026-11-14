@@ -1,4 +1,4 @@
-name: Supabase Keep-Alive
+name: Keep-Alive (Supabase + Streamlit)
 
 on:
   schedule:
@@ -19,8 +19,50 @@ jobs:
           echo "HTTP Response Code: $HTTP_CODE"
 
           if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✓ Keep-alive request successful"
+            echo "✓ Supabase keep-alive request successful"
           else
-            echo "⚠ Keep-alive request returned: $HTTP_CODE"
+            echo "⚠ Supabase keep-alive request returned: $HTTP_CODE"
             exit 1
           fi
+
+      - name: Setup Playwright
+        run: |
+          npm install -D playwright
+
+      - name: Access Streamlit App with Playwright
+        run: |
+          npx playwright install chromium
+          cat > /tmp/keep_alive.mjs << 'EOF'
+          import { chromium } from 'playwright';
+
+          const browser = await chromium.launch();
+          const page = await browser.newPage();
+
+          try {
+            console.log('Accessing Streamlit app...');
+            await page.goto('https://dental-app-zw5nqdbuealqwtgwemevqd.streamlit.app', {
+              waitUntil: 'domcontentloaded',
+              timeout: 30000
+            });
+
+            // Wait for page to fully load
+            await page.waitForTimeout(10000);
+
+            // Check for sleep/wake button
+            const wakeButton = await page.$('button:has-text("Yes, get this app back up!")');
+            if (wakeButton) {
+              console.log('App is sleeping. Clicking wake-up button...');
+              await wakeButton.click();
+              await page.waitForTimeout(5000);
+            }
+
+            console.log('✓ Streamlit app is active');
+          } catch (error) {
+            console.error('Error:', error.message);
+            process.exit(1);
+          } finally {
+            await browser.close();
+          }
+          EOF
+
+          node /tmp/keep_alive.mjs
