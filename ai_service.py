@@ -14,10 +14,10 @@ from config import MATERIAL_LIST, TYPE_LIST, log_error
 
 # 優先順にフォールバックするモデル
 MODEL_FALLBACK_CHAIN = [
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
 ]
 
 # 1回のバッチで処理するファイル数
